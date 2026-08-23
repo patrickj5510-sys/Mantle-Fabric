@@ -10,7 +10,7 @@ import javax.annotation.Nullable;
 
 public class WoodenDoorBlock extends DoorBlock implements LandPathNodeTypesRegistry.StaticPathNodeTypeProvider {
   public WoodenDoorBlock(Properties builder, BlockSetType blockSetType) {
-    super(builder, blockSetType);
+    super(blockSetType, builder);
     LandPathNodeTypesRegistry.register(this, this);
   }
 
