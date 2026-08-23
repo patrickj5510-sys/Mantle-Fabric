@@ -1,6 +1,6 @@
 package slimeknights.mantle.recipe.helper;
 
-import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.CommonLifecycleEvents;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -28,13 +28,11 @@ public class TagPreference {
   /** Cache of comparator instances. */
   private static final Map<ResourceKey<?>, RegistryComparator<?>> COMPARATOR_CACHE = new HashMap<>();
 
-  /** Registers cache invalidation for successful server datapack reloads. */
+  /** Registers cache invalidation whenever tags are loaded or synchronized. */
   public static void init() {
-    ServerLifecycleEvents.END_DATA_PACK_RELOAD.register((server, resourceManager, success) -> {
-      if (success) {
-        PREFERENCE_CACHE.clear();
-        COMPARATOR_CACHE.clear();
-      }
+    CommonLifecycleEvents.TAGS_LOADED.register((registries, client) -> {
+      PREFERENCE_CACHE.clear();
+      COMPARATOR_CACHE.clear();
     });
   }
 
