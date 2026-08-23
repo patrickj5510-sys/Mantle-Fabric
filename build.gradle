@@ -1,83 +1,42 @@
 /*
- * Mantle
- * Master build file
- * Based on TConstruct's master build file
- * Authors: Sunstrike, ProgWML6
- * Help from AbrarSyed
-*/
+ * Mantle Fabric 1.21.1 port build
+ */
 
-//file:noinspection GroovyAssignabilityCheck
 plugins {
-    id 'fabric-loom' version '1.5-SNAPSHOT'
+    id 'fabric-loom' version '1.7-SNAPSHOT'
     id 'maven-publish'
-    id 'org.quiltmc.quilt-mappings-on-loom' version '4.+'
 }
 
 repositories {
     mavenCentral()
+    maven { url = "https://maven.fabricmc.net/" }
     maven { url = "https://maven.parchmentmc.org" }
     maven { url = "https://maven.shedaniel.me/" }
+    maven { url = "https://maven.blamejared.com" }
     maven { url = "https://cursemaven.com" }
     maven { url = "https://mvn.devos.one/releases/" }
     maven { url = "https://mvn.devos.one/snapshots/" }
     maven { url = "https://maven.terraformersmc.com/releases/" }
     maven { url = "https://maven.ladysnake.org/releases" }
-    maven { url = "https://maven.jamieswhiteshirt.com/libs-release" }
-    maven { url = "https://maven.wispforest.io" }
-    maven { url = "https://maven.vram.io" }
     maven { url = "https://jitpack.io" }
-    maven {
-        // location of a maven mirror for JEI files, as a fallback
-        name = "ModMaven"
-        url = "https://modmaven.dev"
-    }
-    // If you have mod jar dependencies in ./libs, you can declare them as a repository like so:
-    // flatDir {
-    //     dir 'libs'
-    // }
 }
 
 group = 'slimeknights.mantle'
-archivesBaseName = 'Mantle'
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
-
-// sets version to the slimeKnights version format
-task buildInfo {
-    try {
-        def cmd = "git rev-parse --short HEAD"
-        def proc = cmd.execute()
-        proc.waitFor()
-        if (proc.exitValue() == 0) {
-            ext.revision = proc.text.trim()
-        } else {
-            ext.revision = "GITBORK"
-        }
-    } catch (all) {
-        ext.revision = "gitgud"
-    }
-
-    if (System.getenv().GITHUB_RUN_NUMBER != null) {
-        ext.buildNum = "${System.getenv().GITHUB_RUN_NUMBER}"
-    } else {
-        ext.buildNum = "DEV.${project.buildInfo.revision}"
-    }
-}
-ext.artifact_version = 'NFG'
-if (System.getenv().ARTIFACT_VERSION == null) {
-    artifact_version = "${mod_version}.${project.buildInfo.buildNum}"
-}
-if (System.getenv().ARTIFACT_VERSION != null) {
-    artifact_version = "${system.getenv().ARTIFACT_VERSION}"
+base {
+    archivesName = 'Mantle'
 }
 
-version = "${minecraft_version}-${artifact_version}"
-println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}, Version: ${version}"
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    withSourcesJar()
+}
+
+version = "${minecraft_version}-${mod_version}"
 
 sourceSets {
     main {
         resources {
             srcDirs "src/generated/resources"
-            //But exclude the cache of the generated data from what gets built
             exclude '.cache'
         }
     }
@@ -88,29 +47,25 @@ loom {
     runs {
         datagen {
             client()
-
             name "Data Generation"
             vmArg "-Dfabric-api.datagen"
             vmArg "-Dfabric-api.datagen.output-dir=${file("src/generated/resources")}"
             vmArg "-Dfabric-api.datagen.modid=mantle"
-
             runDir "build/datagen"
         }
     }
 }
-assemble.dependsOn runDatagen
 
 processResources {
     Map<String, Object> properties = [
         "version": version,
         "minecraft_version": minecraft_version,
         "loader_version": loader_version,
-        "fabric_version": fabric_version,
-        "reach_entity_attributes_version": reach_entity_attributes_version
+        "fabric_version": fabric_version
     ]
-    for (String module in port_lib_modules.split(","))
-        properties.put("port_lib_${module}_version".toString(), port_lib_version)
-    properties.put("port_lib_tags_version", "3.0") // the weird one
+    for (String module in port_lib_modules.split(",")) {
+        properties.put("port_lib_${module}_version".toString(), "${port_lib_version}+${minecraft_version}")
+    }
 
     properties.forEach((k, v) -> inputs.property(k, v))
 
@@ -119,100 +74,65 @@ processResources {
     }
 }
 
-configurations {
-    deployerJars
-}
-               
 dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-
+    minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings loom.officialMojangMappings()
 
-    modImplementation("net.fabricmc:fabric-loader:${project.loader_version}")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:${project.fabric_version}")
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
 
     for (String module in port_lib_modules.split(",")) {
-        modApi("io.github.fabricators_of_create.Porting-Lib:$module:$port_lib_version+$minecraft_version")
-    }
-    modApi("com.jamieswhiteshirt:reach-entity-attributes:$reach_entity_attributes_version")
-    api("com.electronwill.night-config:toml:3.6.6")
-    api("com.electronwill.night-config:core:3.6.6")
-
-    // compile against the REI API but do not include it at runtime
-    modCompileOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:${project.rei_version}")
-    // at runtime, use the full REI jar
-    modRuntimeOnly("me.shedaniel:RoughlyEnoughItems-fabric:${project.rei_version}") {
-        exclude(group: "net.fabricmc.fabric-api")
-    }
-    // api for REI
-    modImplementation("dev.architectury:architectury-fabric:${project.architectury_version}") {
-        exclude(group: "net.fabricmc.fabric-api")
+        modApi("io.github.fabricators_of_create.Porting-Lib:${module}:${port_lib_version}+${minecraft_version}")
     }
 
-    modCompileOnly("mezz.jei:jei-${project.minecraft_version}-fabric:${jei_version}")
+    api "com.electronwill.night-config:toml:3.6.7"
+    api "com.electronwill.night-config:core:3.6.7"
+
+    modCompileOnly("me.shedaniel:RoughlyEnoughItems-api-fabric:${rei_version}")
+    modRuntimeOnly("me.shedaniel:RoughlyEnoughItems-fabric:${rei_version}") {
+        exclude group: "net.fabricmc.fabric-api"
+    }
+
+    modImplementation("dev.architectury:architectury-fabric:${architectury_version}") {
+        exclude group: "net.fabricmc.fabric-api"
+    }
+
+    modCompileOnly "mezz.jei:jei-${minecraft_version}-fabric:${jei_version}"
+    modCompileOnly "com.terraformersmc:modmenu:${modmenu_version}"
+
+    modApi "org.ladysnake.cardinal-components-api:cardinal-components-base:${cca_version}"
+    modApi "org.ladysnake.cardinal-components-api:cardinal-components-entity:${cca_version}"
+    include "org.ladysnake.cardinal-components-api:cardinal-components-base:${cca_version}"
+    include "org.ladysnake.cardinal-components-api:cardinal-components-entity:${cca_version}"
+
+    compileOnly "org.projectlombok:lombok:1.18.34"
+    annotationProcessor "org.projectlombok:lombok:1.18.34"
+    testCompileOnly "org.projectlombok:lombok:1.18.34"
+    testAnnotationProcessor "org.projectlombok:lombok:1.18.34"
 
     implementation(include("com.google.code.findbugs:jsr305:3.0.2"))
-
-    modApi "com.terraformersmc:modmenu:${project.modmenu_version}"
-
-    // cca
-    modApi "dev.onyxstudios.cardinal-components-api:cardinal-components-base:${project.cca_version}"
-    modApi "dev.onyxstudios.cardinal-components-api:cardinal-components-entity:${project.cca_version}"
-    include "dev.onyxstudios.cardinal-components-api:cardinal-components-base:${project.cca_version}"
-    include "dev.onyxstudios.cardinal-components-api:cardinal-components-entity:${project.cca_version}"
-
-    compileOnly "org.projectlombok:lombok:1.18.22"
-    annotationProcessor "org.projectlombok:lombok:1.18.22"
-
-    testCompileOnly "org.projectlombok:lombok:1.18.22"
-    testAnnotationProcessor 'org.projectlombok:lombok:1.18.22'
-
-    modImplementation(include("me.alphamode:Star:${project.star_version}+${project.minecraft_version}"))
-}
-
-task buildOrPublish {
-    group = "build"
-    String mavenUser = System.getenv().MAVEN_USER
-    if (mavenUser != null && !mavenUser.isEmpty()) {
-        dependsOn(tasks.getByName("publish"))
-        println "prepared for publish"
-    } else {
-        dependsOn(tasks.getByName("build"))
-        println "prepared for build"
-    }
-}
-
-jar {
-    manifest {
-        attributes([
-                "Specification-Title"     : "Mantle",
-                "Specification-Vendor"    : "Slime Knights",
-                "Specification-Version"   : "1", // We are version 1 of ourselves
-                "Implementation-Title"    : project.name,
-                "Implementation-Version"  : "${version}",
-                "Implementation-Vendor"   : "Slime Knights",
-                "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
-        ])
-    }
-}
-
-task sourcesJar(type: Jar) {
-    from sourceSets.main.allJava
-    archiveClassifier = 'sources'
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.encoding = "UTF-8"
-
-    it.options.release = 17
+    options.encoding = 'UTF-8'
+    options.release = 21
 }
 
-java {
-    withSourcesJar()
-}
-
-artifacts {
-    archives sourcesJar
+jar {
+    from('LICENSE') {
+        rename { "${it}_${base.archivesName.get()}" }
+    }
+    manifest {
+        attributes([
+            "Specification-Title": "Mantle",
+            "Specification-Vendor": "Slime Knights",
+            "Specification-Version": "1",
+            "Implementation-Title": project.name,
+            "Implementation-Version": "${version}",
+            "Implementation-Vendor": "Slime Knights",
+            "Implementation-Timestamp": new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
 }
 
 publishing {
@@ -221,19 +141,4 @@ publishing {
             from components.java
         }
     }
-
-    repositories {
-        maven {
-            url = "https://mvn.devos.one/${System.getenv().PUBLISH_SUFFIX}/"
-            credentials {
-                username = System.getenv().MAVEN_USER
-                password = System.getenv().MAVEN_PASS
-            }
-            authentication { basic(BasicAuthentication) }
-        }
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
 }
