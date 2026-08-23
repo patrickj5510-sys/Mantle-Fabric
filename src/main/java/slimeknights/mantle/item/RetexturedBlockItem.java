@@ -21,15 +21,14 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Logic for a dynamically retexturable block item. This will ensure all the NBT is in the expected format on the item NBT.
- *
- * Use alongside {@link IRetexturedBlockEntity} and {@link RetexturedBlock}
+ * Logic for a dynamically retexturable block item.
+ * Use alongside {@link IRetexturedBlockEntity} and {@link RetexturedBlock}.
  */
 @SuppressWarnings("WeakerAccess")
 public class RetexturedBlockItem extends BlockTooltipItem {
-
   /** Tag used for getting the texture */
   protected final TagKey<Item> textureTag;
+
   public RetexturedBlockItem(Block block, TagKey<Item> textureTag, Properties builder) {
     super(block, builder);
     this.textureTag = textureTag;
@@ -45,88 +44,48 @@ public class RetexturedBlockItem extends BlockTooltipItem {
     super.appendHoverText(stack, worldIn, tooltip, flagIn);
   }
 
-
   /* Utils */
 
-  /**
-   * Gets the texture name from a stack
-   * @param stack  Stack
-   * @return  Texture, or empty string if none
-   */
+  /** Gets the texture name from a stack. */
   public static String getTextureName(ItemStack stack) {
-    return RetexturedHelper.getTextureName(stack.getTag());
+    return RetexturedHelper.getTextureName(stack);
   }
 
-  /**
-   * Gets the texture from a stack
-   * @param stack  Stack to fetch texture
-   * @return  Texture, or {@link Blocks#AIR} if none
-   */
+  /** Gets the texture block from a stack. */
   public static Block getTexture(ItemStack stack) {
-    return RetexturedHelper.getBlock(getTextureName(stack));
+    return RetexturedHelper.getTexture(stack);
   }
 
-  /**
-   * Adds the texture block to the tooltip
-   * @param stack    Stack instance
-   * @param tooltip  Tooltip
-   */
+  /** Adds the texture block to the tooltip. */
   public static void addTooltip(ItemStack stack, List<Component> tooltip) {
-    Block block = getTexture(stack);
-    if (block != Blocks.AIR) {
-      tooltip.add(block.getName());
-    }
+    RetexturedHelper.addTooltip(stack, tooltip);
   }
-  /**
-   * Creates a new item stack with the given block as it's texture tag
-   * @param stack  Stack to modify
-   * @param name   Block name to set. If empty, clears the tag
-   * @return The item stack with the proper NBT
-   */
+
+  /** Sets or clears the texture name using 1.21 item data components. */
   public static ItemStack setTexture(ItemStack stack, String name) {
-    if (!name.isEmpty()) {
-      RetexturedHelper.setTexture(stack.getOrCreateTag(), name);
-    } else if (stack.hasTag()) {
-      RetexturedHelper.setTexture(stack.getTag(), name);
-    }
-    return stack;
+    return RetexturedHelper.setTexture(stack, name);
   }
 
-  /**
-   * Creates a new item stack with the given block as it's texture tag
-   * @param stack Stack to modify
-   * @param block Block to set
-   * @return The item stack with the proper NBT
-   */
+  /** Sets or clears the texture block using 1.21 item data components. */
   public static ItemStack setTexture(ItemStack stack, @Nullable Block block) {
-    if (block == null || block == Blocks.AIR) {
-      return setTexture(stack, "");
-    }
-    return setTexture(stack, Registry.BLOCK.getKey(BuiltInRegistries.BLOCK.getKey(block).toString()));
+    return RetexturedHelper.setTexture(stack, block);
   }
 
   /**
-   * Adds all blocks from the block tag to the specified block for fillItemGroup
-   * @param block             Dynamic texture item instance
-   * @param tag               Tag for texturing
-   * @param list              List of texture blocks
-   * @param showAllVariants   If true, shows all variants. If false, shows just the first
+   * Adds all blocks from the block tag to the specified block for fillItemGroup.
    */
   public static void addTagVariants(ItemLike block, TagKey<Item> tag, CreativeModeTab.Output list, boolean showAllVariants) {
     boolean added = false;
-    // using item tags as that is what will be present in the recipe
     Class<?> clazz = block.getClass();
     for (Holder<Item> candidate : BuiltInRegistries.ITEM.getTagOrEmpty(tag)) {
       if (!candidate.isBound()) {
         continue;
       }
-      // non-block items don't have the textures we need
       Item item = candidate.value();
-      if (!(item instanceof BlockItem)) {
+      if (!(item instanceof BlockItem blockItem)) {
         continue;
       }
-      Block textureBlock = ((BlockItem)item).getBlock();
-      // Don't add instances of the block itself, see Inspirations enlightened bushes
+      Block textureBlock = blockItem.getBlock();
       if (clazz.isInstance(textureBlock)) {
         continue;
       }
@@ -136,7 +95,6 @@ public class RetexturedBlockItem extends BlockTooltipItem {
         return;
       }
     }
-    // if we never got one, just add the textureless one
     if (!added) {
       list.accept(new ItemStack(block));
     }
