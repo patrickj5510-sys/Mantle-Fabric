@@ -36,7 +36,6 @@
     "porting_lib_entity": ">=${port_lib_entity_version}",
     "porting_lib_fluids": ">=${port_lib_fluids_version}",
     "porting_lib_model_loader": ">=${port_lib_model_loader_version}",
-    "porting_lib_networking": ">=${port_lib_networking_version}",
     "porting_lib_tags": ">=${port_lib_tags_version}",
     "porting_lib_transfer": ">=${port_lib_transfer_version}",
     "porting_lib_loot": ">=${port_lib_loot_version}"
