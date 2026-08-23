@@ -6,25 +6,26 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonSerializationContext;
 import com.google.gson.JsonSerializer;
-import net.minecraft.util.GsonHelper;
-import net.minecraftforge.common.crafting.CraftingHelper;
-import net.minecraftforge.common.crafting.conditions.ICondition;
+import com.mojang.serialization.JsonOps;
+import net.fabricmc.fabric.api.resource.conditions.v1.ResourceCondition;
 
 import java.lang.reflect.Type;
 
-/**  Serializer for a forge condition. */
-public class ConditionSerializer implements JsonDeserializer<ICondition>, JsonSerializer<ICondition> {
+/** Gson adapter for Fabric resource conditions. */
+public class ConditionSerializer implements JsonDeserializer<ResourceCondition>, JsonSerializer<ResourceCondition> {
   public static final ConditionSerializer INSTANCE = new ConditionSerializer();
 
   private ConditionSerializer() {}
 
   @Override
-  public ICondition deserialize(JsonElement json, Type type, JsonDeserializationContext context) throws JsonParseException {
-    return CraftingHelper.getCondition(GsonHelper.convertToJsonObject(json, "condition"));
+  public ResourceCondition deserialize(JsonElement json, Type type, JsonDeserializationContext context) throws JsonParseException {
+    return ResourceCondition.CODEC.parse(JsonOps.INSTANCE, json)
+      .getOrThrow(message -> new JsonParseException("Failed to parse resource condition: " + message));
   }
 
   @Override
-  public JsonElement serialize(ICondition condition, Type type, JsonSerializationContext context) {
-    return CraftingHelper.serialize(condition);
+  public JsonElement serialize(ResourceCondition condition, Type type, JsonSerializationContext context) {
+    return ResourceCondition.CODEC.encodeStart(JsonOps.INSTANCE, condition)
+      .getOrThrow(message -> new JsonParseException("Failed to serialize resource condition: " + message));
   }
 }
