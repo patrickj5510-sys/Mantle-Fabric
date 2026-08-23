@@ -1,33 +1,160 @@
 package slimeknights.mantle.inventory;
 
+import io.github.fabricators_of_create.porting_lib.common.util.EnvExecutor;
+import net.fabricmc.api.EnvType;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.NonNullList;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import slimeknights.mantle.util.BlockEntityHelper;
 
 import javax.annotation.Nullable;
 
-/** Base container menu with Mantle's slot movement behavior. */
-public abstract class BaseContainerMenu extends AbstractContainerMenu {
-  protected BaseContainerMenu(@Nullable MenuType<?> menuType, int containerId) {
-    super(menuType, containerId);
+public class BaseContainerMenu<TILE extends BlockEntity> extends AbstractContainerMenu {
+
+  public static double MAX_DISTANCE = 64;
+  public static int BASE_Y_OFFSET = 84;
+
+  @Nullable
+  protected final TILE tile;
+
+  @Nullable
+  protected final Inventory inv;
+
+  protected BaseContainerMenu(MenuType<?> type, int id, @Nullable Inventory inv, @Nullable TILE tile) {
+    super(type, id);
+    this.inv = inv;
+    this.tile = tile;
   }
 
-  /** Adds the player's inventory slots to this menu. */
-  protected void addInventorySlots(Inventory inventory, int startX, int startY) {
-    for (int row = 0; row < 3; row++) {
-      for (int column = 0; column < 9; column++) {
-        this.addSlot(new Slot(inventory, column + row * 9 + 9, startX + column * 18, startY + row * 18));
+  @Nullable
+  public TILE getTile() {
+    return this.tile;
+  }
+
+  public void syncOnOpen(ServerPlayer playerOpened) {
+    ServerLevel server = playerOpened.serverLevel();
+    for (Player player : server.players()) {
+      if (player == playerOpened) {
+        continue;
+      }
+      if (player.containerMenu instanceof BaseContainerMenu) {
+        if (this.sameGui((BaseContainerMenu) player.containerMenu)) {
+          this.syncWithOtherContainer((BaseContainerMenu) player.containerMenu, playerOpened);
+          return;
+        }
       }
     }
-    for (int column = 0; column < 9; column++) {
-      this.addSlot(new Slot(inventory, column, startX + column * 18, startY + 58));
+    this.syncNewContainer(playerOpened);
+  }
+
+  protected void syncWithOtherContainer(BaseContainerMenu otherContainer, ServerPlayer player) {}
+
+  protected void syncNewContainer(ServerPlayer player) {}
+
+  public boolean sameGui(BaseContainerMenu otherContainer) {
+    if (this.tile == null) {
+      return false;
+    }
+    return this.tile == otherContainer.tile;
+  }
+
+  @Override
+  public boolean stillValid(Player playerIn) {
+    if (this.tile == null) {
+      return true;
+    }
+    if (!tile.isRemoved()) {
+      Level world = tile.getLevel();
+      if (world == null) {
+        return false;
+      }
+      return world.isLoaded(tile.getBlockPos());
+    }
+    return false;
+  }
+
+  @Override
+  public NonNullList<ItemStack> getItems() {
+    return super.getItems();
+  }
+
+  protected void addInventorySlots() {
+    if (this.inv != null) {
+      this.addInventorySlots(this.inv);
     }
   }
 
-  /** Moves an item stack between menu regions. */
+  protected int playerInventoryStart = -1;
+
+  protected int getInventoryXOffset() {
+    return 8;
+  }
+
+  protected int getInventoryYOffset() {
+    return BASE_Y_OFFSET;
+  }
+
+  protected void addInventorySlots(Inventory inv) {
+    int yOffset = this.getInventoryYOffset();
+    int xOffset = this.getInventoryXOffset();
+    int start = this.slots.size();
+    for (int slotY = 0; slotY < 3; slotY++) {
+      for (int slotX = 0; slotX < 9; slotX++) {
+        addSlot(new Slot(inv, slotX + slotY * 9 + 9, xOffset + slotX * 18, yOffset + slotY * 18));
+      }
+    }
+    yOffset += 58;
+    for (int slotY = 0; slotY < 9; slotY++) {
+      addSlot(new Slot(inv, slotY, xOffset + slotY * 18, yOffset));
+    }
+    this.playerInventoryStart = start;
+  }
+
+  @Override
+  protected Slot addSlot(Slot slotIn) {
+    if (this.playerInventoryStart >= 0) {
+      throw new IllegalStateException("BaseContainer: Player inventory has to be last slots. Add all slots before adding the player inventory.");
+    }
+    return super.addSlot(slotIn);
+  }
+
+  @Override
+  public ItemStack quickMoveStack(Player playerIn, int index) {
+    if (this.playerInventoryStart < 0) {
+      return ItemStack.EMPTY;
+    }
+    ItemStack itemstack = ItemStack.EMPTY;
+    Slot slot = this.slots.get(index);
+    if (slot != null && slot.hasItem()) {
+      ItemStack itemstack1 = slot.getItem();
+      itemstack = itemstack1.copy();
+      int end = this.slots.size();
+      if (index < this.playerInventoryStart) {
+        if (!this.moveItemStackTo(itemstack1, this.playerInventoryStart, end, true)) {
+          return ItemStack.EMPTY;
+        }
+      } else if (!this.moveItemStackTo(itemstack1, 0, this.playerInventoryStart, false)) {
+        return ItemStack.EMPTY;
+      }
+      if (itemstack1.isEmpty()) {
+        slot.set(ItemStack.EMPTY);
+      } else {
+        slot.setChanged();
+      }
+    }
+    return itemstack;
+  }
+
   @Override
   protected boolean moveItemStackTo(ItemStack stack, int startIndex, int endIndex, boolean useEndIndex) {
     boolean ret = this.mergeItemStackRefill(stack, startIndex, endIndex, useEndIndex);
@@ -37,65 +164,74 @@ public abstract class BaseContainerMenu extends AbstractContainerMenu {
     return ret;
   }
 
-  /** Tries to merge into existing compatible stacks first. */
   protected boolean mergeItemStackRefill(ItemStack stack, int startIndex, int endIndex, boolean useEndIndex) {
     if (stack.getCount() <= 0) {
       return false;
     }
-    boolean changed = false;
-    int index = useEndIndex ? endIndex - 1 : startIndex;
+    boolean flag1 = false;
+    int k = useEndIndex ? endIndex - 1 : startIndex;
+    Slot slot;
+    ItemStack itemstack1;
     if (stack.isStackable()) {
-      while (stack.getCount() > 0 && (!useEndIndex && index < endIndex || useEndIndex && index >= startIndex)) {
-        Slot slot = this.slots.get(index);
-        ItemStack existing = slot.getItem();
-        if (!existing.isEmpty() && ItemStack.isSameItemSameComponents(stack, existing) && this.canTakeItemForPickAll(stack, slot)) {
-          int combined = existing.getCount() + stack.getCount();
+      while (stack.getCount() > 0 && (!useEndIndex && k < endIndex || useEndIndex && k >= startIndex)) {
+        slot = this.slots.get(k);
+        itemstack1 = slot.getItem();
+        if (!itemstack1.isEmpty() && itemstack1.getItem() == stack.getItem() && ItemStack.isSameItemSameComponents(stack, itemstack1) && this.canTakeItemForPickAll(stack, slot)) {
+          int l = itemstack1.getCount() + stack.getCount();
           int limit = Math.min(stack.getMaxStackSize(), slot.getMaxStackSize(stack));
-          if (combined <= limit) {
+          if (l <= limit) {
             stack.setCount(0);
-            existing.setCount(combined);
+            itemstack1.setCount(l);
             slot.setChanged();
-            changed = true;
-          } else if (existing.getCount() < limit) {
-            stack.shrink(limit - existing.getCount());
-            existing.setCount(limit);
+            flag1 = true;
+          } else if (itemstack1.getCount() < limit) {
+            stack.shrink(limit - itemstack1.getCount());
+            itemstack1.setCount(limit);
             slot.setChanged();
-            changed = true;
+            flag1 = true;
           }
         }
-        index += useEndIndex ? -1 : 1;
+        k += useEndIndex ? -1 : 1;
       }
     }
-    return changed;
+    return flag1;
   }
 
-  /** Moves into empty compatible slots after refill attempts. */
   protected boolean mergeItemStackMove(ItemStack stack, int startIndex, int endIndex, boolean useEndIndex) {
     if (stack.getCount() <= 0) {
       return false;
     }
-    boolean changed = false;
-    int index = useEndIndex ? endIndex - 1 : startIndex;
-    while (!useEndIndex && index < endIndex || useEndIndex && index >= startIndex) {
-      Slot slot = this.slots.get(index);
-      ItemStack existing = slot.getItem();
-      if (existing.isEmpty() && slot.mayPlace(stack) && this.canTakeItemForPickAll(stack, slot)) {
+    boolean flag1 = false;
+    int k = useEndIndex ? endIndex - 1 : startIndex;
+    while (!useEndIndex && k < endIndex || useEndIndex && k >= startIndex) {
+      Slot slot = this.slots.get(k);
+      ItemStack itemstack1 = slot.getItem();
+      if (itemstack1.isEmpty() && slot.mayPlace(stack) && this.canTakeItemForPickAll(stack, slot)) {
         int limit = slot.getMaxStackSize(stack);
-        ItemStack moved = stack.copy();
-        moved.setCount(Math.min(stack.getCount(), limit));
-        slot.set(moved);
-        stack.shrink(moved.getCount());
+        ItemStack stack2 = stack.copy();
+        if (stack2.getCount() > limit) {
+          stack2.setCount(limit);
+          stack.shrink(limit);
+        } else {
+          stack.setCount(0);
+        }
+        slot.set(stack2);
         slot.setChanged();
-        changed = true;
+        flag1 = true;
         if (stack.isEmpty()) {
           break;
         }
       }
-      index += useEndIndex ? -1 : 1;
+      k += useEndIndex ? -1 : 1;
     }
-    return changed;
+    return flag1;
   }
 
-  @Override
-  public abstract ItemStack quickMoveStack(Player player, int index);
+  @Nullable
+  public static <TILE extends BlockEntity> TILE getTileEntityFromBuf(@Nullable FriendlyByteBuf buf, Class<TILE> type) {
+    if (buf == null) {
+      return null;
+    }
+    return EnvExecutor.callWhenOn(EnvType.CLIENT, () -> () -> BlockEntityHelper.get(type, Minecraft.getInstance().level, buf.readBlockPos()).orElse(null));
+  }
 }
