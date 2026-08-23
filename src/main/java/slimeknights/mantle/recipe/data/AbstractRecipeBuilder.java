@@ -1,162 +1,86 @@
 package slimeknights.mantle.recipe.data;
 
-import com.google.gson.JsonObject;
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
 import net.minecraft.advancements.Advancement;
+import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.AdvancementRequirements;
 import net.minecraft.advancements.AdvancementRewards;
-import net.minecraft.advancements.CriterionTriggerInstance;
-import net.minecraft.advancements.RequirementsStrategy;
+import net.minecraft.advancements.Criterion;
 import net.minecraft.advancements.critereon.RecipeUnlockedTrigger;
-import net.minecraft.data.recipes.FinishedRecipe;
+import net.minecraft.data.recipes.RecipeOutput;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.crafting.Recipe;
-import net.minecraft.world.item.crafting.RecipeSerializer;
-import slimeknights.mantle.data.loadable.record.RecordLoadable;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.util.function.Consumer;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-/**
- * Common logic to create a recipe builder class
- * @param <T>
- */
+/** Common logic to create a recipe builder class. */
 @SuppressWarnings({"WeakerAccess", "unused"})
 public abstract class AbstractRecipeBuilder<T extends AbstractRecipeBuilder<T>> {
-  /** Advancement builder for this class */
-  protected final Advancement.Builder advancementBuilder = Advancement.Builder.advancement();
-  /** Group for this recipe */
+  /** Criteria for this recipe's advancement. */
+  protected final Map<String, Criterion<?>> criteria = new LinkedHashMap<>();
+  /** Group for this recipe. */
   @Nonnull
   protected String group = "";
 
-  /**
-   * Adds a criteria to the recipe
-   * @param name      Criteria name
-   * @param criteria  Criteria instance
-   * @return  Builder
-   */
+  /** Adds a criterion to the recipe. */
   @SuppressWarnings("unchecked")
-  public T unlockedBy(String name, CriterionTriggerInstance criteria) {
-    this.advancementBuilder.addCriterion(name, criteria);
-    return (T)this;
+  public T unlockedBy(String name, Criterion<?> criterion) {
+    this.criteria.put(name, criterion);
+    return (T) this;
   }
 
-  /**
-   * Sets the group for this recipe
-   * @param group  Recipe group
-   * @return  Builder
-   */
+  /** Sets the group for this recipe. */
   @SuppressWarnings("unchecked")
   public T group(String group) {
     this.group = group;
-    return (T)this;
+    return (T) this;
   }
 
-  /**
-   * Sets the group for this recipe
-   * @param group  Recipe resource location group
-   * @return  Builder
-   */
+  /** Sets the group for this recipe from a resource location. */
   public T group(ResourceLocation group) {
-    // if minecraft, no namepsace. Groups are technically not namespaced so this is for consistency with vanilla
     if ("minecraft".equals(group.getNamespace())) {
       return group(group.getPath());
     }
     return group(group.toString());
   }
 
-  /**
-   * Builds the recipe with a default recipe ID, typically based on the output
-   * @param consumerIn  Recipe consumer
-   */
-  public abstract void save(Consumer<FinishedRecipe> consumerIn);
+  /** Builds the recipe with its default recipe ID. */
+  public abstract void save(RecipeOutput recipeOutput);
 
-  /**
-   * Builds the recipe
-   * @param consumerIn  Recipe consumer
-   * @param id          Recipe ID
-   */
-  public abstract void save(Consumer<FinishedRecipe> consumerIn, ResourceLocation id);
+  /** Builds the recipe with the supplied ID. */
+  public abstract void save(RecipeOutput recipeOutput, ResourceLocation id);
 
-  /**
-   * Base logic for advancement building
-   * @param id      Recipe ID
-   * @param folder  Group folder for saving recipes. Vanilla typically uses item groups, but for mods might as well base on the recipe
-   * @return Advancement ID
-   */
-  private ResourceLocation buildAdvancementInternal(ResourceLocation id, String folder) {
-    this.advancementBuilder
-        .parent(new ResourceLocation("recipes/root"))
-        .addCriterion("has_the_recipe", RecipeUnlockedTrigger.unlocked(id))
-        .rewards(AdvancementRewards.Builder.recipe(id))
-        .requirements(RequirementsStrategy.OR);
-    return new ResourceLocation(id.getNamespace(), "recipes/" + folder + "/" + id.getPath());
+  /** Builds the recipe advancement. */
+  private AdvancementHolder buildAdvancementInternal(RecipeOutput recipeOutput, ResourceLocation id, String folder) {
+    Advancement.Builder builder = recipeOutput.advancement()
+      .addCriterion("has_the_recipe", RecipeUnlockedTrigger.unlocked(id))
+      .rewards(AdvancementRewards.Builder.recipe(id))
+      .requirements(AdvancementRequirements.Strategy.OR);
+    criteria.forEach(builder::addCriterion);
+    return builder.build(id.withPrefix("recipes/" + folder + "/"));
   }
 
-  /**
-   * Builds and validates the advancement, intended to be called in {@link #save(Consumer, ResourceLocation)}
-   * @param id      Recipe ID
-   * @param folder  Group folder for saving recipes. Vanilla typically uses item groups, but for mods might as well base on the recipe
-   * @return Advancement ID
-   */
-  protected ResourceLocation buildAdvancement(ResourceLocation id, String folder) {
-    if (this.advancementBuilder.getCriteria().isEmpty()) {
+  /** Builds and validates the advancement for this recipe. */
+  protected AdvancementHolder buildAdvancement(RecipeOutput recipeOutput, ResourceLocation id, String folder) {
+    if (criteria.isEmpty()) {
       throw new IllegalStateException("No way of obtaining recipe " + id);
     }
-    return buildAdvancementInternal(id, folder);
+    return buildAdvancementInternal(recipeOutput, id, folder);
   }
 
-  /**
-   * Builds an optional advancement, intended to be called in {@link #save(Consumer, ResourceLocation)}
-   * @param id        Recipe ID
-   * @param folder    Group folder for saving recipes. Vanilla typically uses item groups, but for mods might as well base on the recipe
-   * @return Advancement ID, or null if the advancement was not defined
-   */
+  /** Builds an advancement only when criteria were supplied. */
   @Nullable
-  protected ResourceLocation buildOptionalAdvancement(ResourceLocation id, String folder) {
-    if (this.advancementBuilder.getCriteria().isEmpty()) {
+  protected AdvancementHolder buildOptionalAdvancement(RecipeOutput recipeOutput, ResourceLocation id, String folder) {
+    if (criteria.isEmpty()) {
       return null;
     }
-    return buildAdvancementInternal(id, folder);
+    return buildAdvancementInternal(recipeOutput, id, folder);
   }
 
-  /** Class to implement basic finished recipe methods */
-  @RequiredArgsConstructor
-  protected abstract class AbstractFinishedRecipe implements FinishedRecipe {
-    @Getter
-    private final ResourceLocation id;
-    @Getter @Nullable
-    private final ResourceLocation advancementId;
-
-    @Nullable
-    @Override
-    public JsonObject serializeAdvancement() {
-      if (advancementId == null) {
-        return null;
-      }
-      return advancementBuilder.serializeToJson();
-    }
-  }
-
-  /** Finished recipe using a loadable */
-  protected class LoadableFinishedRecipe<R extends Recipe<?>> extends AbstractFinishedRecipe {
-    private final R recipe;
-    private final RecordLoadable<R> loadable;
-    public LoadableFinishedRecipe(R recipe, RecordLoadable<R> loadable, @Nullable ResourceLocation advancementId) {
-      super(recipe.getId(), advancementId);
-      this.recipe = recipe;
-      this.loadable = loadable;
-    }
-
-    @Override
-    public void serializeRecipeData(JsonObject json) {
-      loadable.serialize(recipe, json);
-    }
-
-    @Override
-    public RecipeSerializer<?> getType() {
-      return recipe.getSerializer();
-    }
+  /** Saves a recipe directly through the 1.21 recipe output. */
+  protected void saveRecipe(RecipeOutput recipeOutput, ResourceLocation id, Recipe<?> recipe, @Nullable AdvancementHolder advancement) {
+    recipeOutput.accept(id, recipe, advancement);
   }
 }
