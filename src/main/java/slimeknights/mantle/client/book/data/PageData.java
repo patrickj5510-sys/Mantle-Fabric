@@ -1,9 +1,6 @@
 package slimeknights.mantle.client.book.data;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import io.github.fabricators_of_create.porting_lib.util.TrueCondition;
-import net.fabricmc.fabric.api.resource.conditions.v1.ConditionJsonProvider;
 import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
@@ -13,7 +10,6 @@ import slimeknights.mantle.client.book.data.content.ContentError;
 import slimeknights.mantle.client.book.data.content.PageContent;
 import slimeknights.mantle.client.book.data.element.IDataElement;
 import slimeknights.mantle.client.book.repository.BookRepository;
-import slimeknights.mantle.util.DataLoadedConditionContext;
 
 import javax.annotation.Nullable;
 import java.lang.reflect.Array;
@@ -22,7 +18,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.Map;
-import java.util.function.Predicate;
 
 public class PageData implements IDataItem, IConditional {
 
@@ -30,7 +25,7 @@ public class PageData implements IDataItem, IConditional {
   public ResourceLocation type = Mantle.getResource("blank");
   public String data = "";
   public float scale = 1.0F;
-  public JsonCondition condition = new JsonCondition(TrueCondition.ID, new JsonObject());
+  public JsonCondition condition = new JsonCondition(ResourceConditions.alwaysTrue());
 
   /** Contains arbitrary data to be used by custom transformers and other things */
   public Map<ResourceLocation, JsonElement> extraData = Collections.emptyMap();
@@ -39,7 +34,7 @@ public class PageData implements IDataItem, IConditional {
   public transient BookRepository source;
   public transient PageContent content;
 
-  @SuppressWarnings("unused") // used implicitly by GSON
+  @SuppressWarnings("unused")
   public PageData() {
     this(false);
   }
@@ -50,7 +45,7 @@ public class PageData implements IDataItem, IConditional {
     }
   }
 
-  @SuppressWarnings("unused") // utility
+  @SuppressWarnings("unused")
   public String translate(String string) {
     return this.parent.translate(string);
   }
@@ -62,7 +57,6 @@ public class PageData implements IDataItem, IConditional {
     }
 
     this.name = this.name.toLowerCase();
-
     Class<? extends PageContent> ctype = BookLoader.getPageType(type);
 
     if (!this.data.isEmpty() && !this.data.equals("no-load")) {
@@ -70,13 +64,11 @@ public class PageData implements IDataItem, IConditional {
       if (pageInfo != null) {
         String data = this.source.resourceToString(pageInfo);
         if (!data.isEmpty()) {
-          // Test if the page type is specified within the content iteself
           PageTypeOverrider overrider = BookLoader.getGson().fromJson(data, PageTypeOverrider.class);
           if (overrider.type != null) {
             Class<? extends PageContent> overriddenType = BookLoader.getPageType(overrider.type);
-            if(overriddenType != null) {
-              ctype = BookLoader.getPageType(overrider.type);
-              // Also override the type on the page so that we can read it out in transformers
+            if (overriddenType != null) {
+              ctype = overriddenType;
               type = overrider.type;
             }
           }
@@ -125,9 +117,7 @@ public class PageData implements IDataItem, IConditional {
 
   private void processField(Field f) {
     f.setAccessible(true);
-
-    if (Modifier.isTransient(f.getModifiers()) || Modifier.isStatic(f.getModifiers()) || Modifier
-      .isFinal(f.getModifiers())) {
+    if (Modifier.isTransient(f.getModifiers()) || Modifier.isStatic(f.getModifiers()) || Modifier.isFinal(f.getModifiers())) {
       return;
     }
 
@@ -142,12 +132,12 @@ public class PageData implements IDataItem, IConditional {
   }
 
   private void processObject(@Nullable Object o, final int depth) {
-    if (depth > 4 || o == null)
+    if (depth > 4 || o == null) {
       return;
+    }
 
     Class<?> c = o.getClass();
     boolean isArray = c.isArray();
-
     if (!isArray) {
       if (IDataElement.class.isAssignableFrom(c)) {
         ((IDataElement) o).load(this.source);
@@ -160,7 +150,6 @@ public class PageData implements IDataItem, IConditional {
     }
   }
 
-  /** Gets the title for the page data, which can be overridden by translation */
   public String getTitle() {
     String title = this.parent.parent.strings.get(this.parent.name + "." + this.name);
     if (title != null) {
@@ -175,7 +164,7 @@ public class PageData implements IDataItem, IConditional {
 
   @Override
   public boolean isConditionMet() {
-    return condition.test(DataLoadedConditionContext.INSTANCE);
+    return condition.test();
   }
 
   private static class PageTypeOverrider {
