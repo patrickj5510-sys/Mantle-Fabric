@@ -1,6 +1,6 @@
 package slimeknights.mantle.block.entity;
 
-import io.github.fabricators_of_create.porting_lib.common.util.Lazy;
+import io.github.fabricators_of_create.porting_lib.models.data.ModelData;
 import lombok.Getter;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
@@ -10,21 +10,18 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import slimeknights.mantle.block.RetexturedBlock;
-import slimeknights.mantle.client.model.data.IModelData;
-import slimeknights.mantle.client.model.data.SinglePropertyData;
 import slimeknights.mantle.util.RetexturedHelper;
 
 import javax.annotation.Nonnull;
 
 import static slimeknights.mantle.util.RetexturedHelper.TAG_TEXTURE;
 
-/**
- * Standard implementation for {@link IRetexturedBlockEntity}, use alongside {@link RetexturedBlock} and {@link slimeknights.mantle.item.RetexturedBlockItem}
- */
+/** Standard retexturable block entity implementation. */
 public class DefaultRetexturedBlockEntity extends MantleBlockEntity implements IRetexturedBlockEntity {
   @Nonnull
   @Getter
   private Block texture = Blocks.AIR;
+
   public DefaultRetexturedBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
     super(type, pos, state);
   }
