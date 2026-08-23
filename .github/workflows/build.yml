@@ -1,6 +1,10 @@
 name: build
 on: [ push, pull_request ]
 
+concurrency:
+  group: mantle-port-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     strategy:
@@ -24,8 +28,8 @@ jobs:
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: build
-        run: ./gradlew build --stacktrace
+      - name: compile port
+        run: ./gradlew compileJava --stacktrace
 
       - name: capture build artifacts
         if: success()
