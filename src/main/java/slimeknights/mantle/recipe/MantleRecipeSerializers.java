@@ -4,14 +4,11 @@ import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import net.minecraft.world.item.crafting.RecipeSerializer;
 
-/**
- * All recipe serializers registered under Mantles name.
- * TODO: merge with other mantle registry classes?
- */
+/** All recipe serializers registered under Mantle's namespace. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public class MantleRecipeSerializers {
-  @ObjectHolder(registryName = "minecraft:recipe_serializer", value = Mantle.modId+":crafting_shaped_fallback")
+  /** Assigned during Mantle initialization after registration. */
   public static RecipeSerializer<?> CRAFTING_SHAPED_FALLBACK;
-  @ObjectHolder(registryName = "minecraft:recipe_serializer", value = Mantle.modId+":crafting_shaped_retextured")
+  /** Assigned during Mantle initialization after registration. */
   public static RecipeSerializer<?> CRAFTING_SHAPED_RETEXTURED;
 }
