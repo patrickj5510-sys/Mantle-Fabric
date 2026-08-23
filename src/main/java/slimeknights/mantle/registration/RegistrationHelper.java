@@ -30,10 +30,11 @@ public class RegistrationHelper {
     return () -> (R) holder.get();
   }
 
-  /** Registers a wood type for Mantle's client setup. */
+  /** Registers a wood type with vanilla and records it for Mantle client setup. */
   public static void registerWoodType(WoodType type) {
     synchronized (WOOD_TYPES) {
       WOOD_TYPES.add(type);
+      WoodType.register(type);
     }
   }
 
