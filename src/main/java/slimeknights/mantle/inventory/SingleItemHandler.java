@@ -7,45 +7,31 @@ import net.fabricmc.fabric.api.transfer.v1.item.ItemVariant;
 import net.fabricmc.fabric.api.transfer.v1.item.base.SingleStackStorage;
 import net.fabricmc.fabric.api.transfer.v1.storage.base.SingleSlotStorage;
 import net.fabricmc.fabric.api.transfer.v1.transaction.TransactionContext;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import slimeknights.mantle.block.entity.MantleBlockEntity;
 
 import javax.annotation.Nonnull;
 
-/**
- * Item handler containing exactly one item.
- */
+/** Item handler containing exactly one item. */
 @SuppressWarnings("unused")
 @RequiredArgsConstructor
 public abstract class SingleItemHandler<T extends MantleBlockEntity> implements SlottedStackStorage {
   protected final T parent;
   private final int maxStackSize;
 
-  /** Current item in this slot */
   @Getter
   private ItemStack stack = ItemStack.EMPTY;
 
-  /**
-   * Sets the stack in this duct
-   * @param newStack  New stack
-   */
   public void setStack(ItemStack newStack) {
     this.stack = newStack;
     parent.setChangedFast();
   }
 
-  /**
-   * Checks if the given stack is valid for this slot
-   * @param stack  Stack
-   * @return  True if valid
-   */
   protected abstract boolean isItemValid(ItemVariant stack);
 
-
-  /* Properties */
-
-  @Override
+  /** Compatibility helper retained for callers that validate by slot number. */
   public boolean isItemValid(int slot, ItemVariant stack) {
     return slot == 0 && isItemValid(stack);
   }
@@ -63,14 +49,8 @@ public abstract class SingleItemHandler<T extends MantleBlockEntity> implements 
   @Nonnull
   @Override
   public ItemStack getStackInSlot(int slot) {
-    if (slot == 0) {
-      return stack;
-    }
-    return ItemStack.EMPTY;
+    return slot == 0 ? stack : ItemStack.EMPTY;
   }
-
-
-  /* Interaction */
 
   @Override
   public void setStackInSlot(int slot, ItemStack stack) {
@@ -104,23 +84,14 @@ public abstract class SingleItemHandler<T extends MantleBlockEntity> implements 
     return getSlot(0).extract(resource, maxAmount, transaction);
   }
 
-  /**
-   * Writes this module to NBT
-   * @return  Module in NBT
-   */
-  public CompoundTag writeToNBT() {
-    CompoundTag nbt = new CompoundTag();
+  public CompoundTag writeToNBT(HolderLookup.Provider registries) {
     if (!stack.isEmpty()) {
-      stack.save(nbt);
+      return (CompoundTag) stack.save(registries);
     }
-    return nbt;
+    return new CompoundTag();
   }
 
-  /**
-   * Reads this module from NBT
-   * @param nbt  NBT
-   */
-  public void readFromNBT(CompoundTag nbt) {
-    stack = ItemStack.of(nbt);
+  public void readFromNBT(CompoundTag nbt, HolderLookup.Provider registries) {
+    stack = ItemStack.parseOptional(registries, nbt);
   }
 }
