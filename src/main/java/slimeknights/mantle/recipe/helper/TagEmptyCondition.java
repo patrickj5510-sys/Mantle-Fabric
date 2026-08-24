@@ -1,64 +1,65 @@
 package slimeknights.mantle.recipe.helper;
 
-import com.google.gson.JsonObject;
-import lombok.RequiredArgsConstructor;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.fabricmc.fabric.api.resource.conditions.v1.ResourceCondition;
+import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditionType;
+import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
-import net.minecraftforge.common.crafting.conditions.ICondition;
-import net.minecraftforge.common.crafting.conditions.IConditionSerializer;
+import org.jetbrains.annotations.Nullable;
 import slimeknights.mantle.Mantle;
-import slimeknights.mantle.util.JsonHelper;
 
-/** Condition that checks when a fluid tag is empty. Same as {@link net.minecraftforge.common.crafting.conditions.TagEmptyCondition} but for fluids instead of items */
-@RequiredArgsConstructor
-public class TagEmptyCondition<T> implements ICondition {
+/**
+ * Resource condition used for fallback data when a tag is unavailable.
+ *
+ * <p>Fabric evaluates resource conditions before tag contents are bound, so its public API can tell whether a tag
+ * was loaded but cannot distinguish a declared zero-entry tag from a populated one at this phase. In practice this
+ * preserves Mantle's fallback behavior for absent compatibility tags, which is the primary use of this condition.</p>
+ */
+public class TagEmptyCondition<T> implements ResourceCondition {
   private static final ResourceLocation NAME = Mantle.getResource("tag_empty");
-  public static final Serializer SERIALIZER = new Serializer();
+
+  public static final MapCodec<TagEmptyCondition<?>> CODEC = RecordCodecBuilder.<TagEmptyCondition<?>>mapCodec(instance -> instance.group(
+    ResourceLocation.CODEC.fieldOf("registry").forGetter(condition -> condition.tag.registry().location()),
+    ResourceLocation.CODEC.fieldOf("tag").forGetter(condition -> condition.tag.location())
+  ).apply(instance, TagEmptyCondition::fromIds));
+
+  public static final ResourceConditionType<TagEmptyCondition<?>> TYPE = ResourceConditionType.create(NAME, CODEC);
+
   private final TagKey<T> tag;
+
+  public TagEmptyCondition(TagKey<T> tag) {
+    this.tag = tag;
+  }
 
   public TagEmptyCondition(ResourceKey<? extends Registry<T>> registry, ResourceLocation name) {
     this(TagKey.create(registry, name));
   }
 
-  @Override
-  public ResourceLocation getID() {
-    return NAME;
+  private static TagEmptyCondition<?> fromIds(ResourceLocation registry, ResourceLocation tag) {
+    return create(ResourceKey.createRegistryKey(registry), tag);
+  }
+
+  private static <T> TagEmptyCondition<T> create(ResourceKey<? extends Registry<T>> registry, ResourceLocation tag) {
+    return new TagEmptyCondition<>(registry, tag);
   }
 
   @Override
-  public boolean test(IContext context) {
-    return context.getTag(tag).isEmpty();
+  public ResourceConditionType<?> getType() {
+    return TYPE;
   }
 
   @Override
-  public String toString()
-  {
+  public boolean test(@Nullable HolderLookup.Provider registries) {
+    return ResourceConditions.not(ResourceConditions.tagsPopulated(tag)).test(registries);
+  }
+
+  @Override
+  public String toString() {
     return "tag_empty(\"" + tag + "\")";
-  }
-
-  private static class Serializer implements IConditionSerializer<TagEmptyCondition<?>> {
-    @Override
-    public void write(JsonObject json, TagEmptyCondition<?> value) {
-      json.addProperty("registry", value.tag.registry().location().toString());
-      json.addProperty("tag", value.tag.location().toString());
-    }
-
-    private <T> TagEmptyCondition<T> readGeneric(JsonObject json) {
-      ResourceKey<Registry<T>> registry = ResourceKey.createRegistryKey(JsonHelper.getResourceLocation(json, "registry"));
-      return new TagEmptyCondition<>(registry, JsonHelper.getResourceLocation(json, "tag"));
-    }
-
-    @Override
-    public TagEmptyCondition<?> read(JsonObject json) {
-      return readGeneric(json);
-    }
-
-    @Override
-    public ResourceLocation getID()
-    {
-      return NAME;
-    }
   }
 }
