@@ -7,6 +7,7 @@ import net.fabricmc.fabric.impl.transfer.DebugMessages;
 import net.fabricmc.fabric.impl.transfer.item.ItemVariantImpl;
 import net.fabricmc.fabric.impl.transfer.item.SpecialLogicInventory;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponentType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.ChestBlock;
@@ -15,6 +16,8 @@ import net.minecraft.world.level.block.entity.BrewingStandBlockEntity;
 import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.state.properties.ChestType;
+
+import java.util.Objects;
 
 class InventorySlotWrapper extends SingleStackStorage {
   private final InventoryStorage storage;
@@ -79,7 +82,7 @@ class InventorySlotWrapper extends SingleStackStorage {
     if (storage.inventory instanceof BrewingStandBlockEntity && slot < 3) {
       return 1;
     }
-    return Math.min(storage.inventory.getMaxStackSize(), variant.toStack(1).getMaxStackSize());
+    return Math.min(storage.inventory.getMaxStackSize(), variant.getItem().getDefaultMaxStackSize());
   }
 
   @Override
@@ -109,8 +112,13 @@ class InventorySlotWrapper extends SingleStackStorage {
     }
 
     if (!original.isEmpty() && original.getItem() == currentStack.getItem()) {
+      if (!Objects.equals(original.getComponentsPatch(), currentStack.getComponentsPatch())) {
+        for (DataComponentType<?> type : original.getComponents().keySet()) {
+          original.set(type, null);
+        }
+        original.applyComponents(currentStack.getComponents());
+      }
       original.setCount(currentStack.getCount());
-      original.setTag(currentStack.hasTag() ? currentStack.getTag().copy() : null);
       setStack(original);
     } else {
       original.setCount(0);
