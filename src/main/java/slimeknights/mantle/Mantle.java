@@ -6,6 +6,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.recipe.v1.ingredient.CustomIngredientSerializer;
+import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.Util;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -40,6 +41,7 @@ import slimeknights.mantle.network.MantleNetwork;
 import slimeknights.mantle.recipe.MantleRecipeSerializers;
 import slimeknights.mantle.recipe.crafting.ShapedFallbackRecipe;
 import slimeknights.mantle.recipe.crafting.ShapedRetexturedRecipe;
+import slimeknights.mantle.recipe.helper.TagEmptyCondition;
 import slimeknights.mantle.recipe.helper.TagPreference;
 import slimeknights.mantle.recipe.ingredient.FluidContainerIngredient;
 import slimeknights.mantle.registration.MantleRegistrations;
@@ -57,6 +59,7 @@ public class Mantle implements ModInitializer {
   public void onInitialize() {
     ConfigRegistry.registerConfig(modId, ModConfig.Type.CLIENT, Config.CLIENT_SPEC);
     ConfigRegistry.registerConfig(modId, ModConfig.Type.SERVER, Config.SERVER_SPEC);
+    ResourceConditions.register(TagEmptyCondition.TYPE);
 
     FluidContainerTransferManager.INSTANCE.init();
     MantleTags.init();
