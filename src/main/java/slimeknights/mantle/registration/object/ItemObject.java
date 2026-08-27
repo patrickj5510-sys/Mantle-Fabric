@@ -1,6 +1,6 @@
 package slimeknights.mantle.registration.object;
 
-import io.github.fabricators_of_create.porting_lib.util.RegistryObject;
+import io.github.fabricators_of_create.porting_lib.registry.DeferredHolder;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import net.minecraft.core.DefaultedRegistry;
@@ -22,7 +22,7 @@ import java.util.function.Supplier;
 public class ItemObject<I extends ItemLike> implements Supplier<I>, ItemLike, IdAwareObject {
   /** Supplier to the registry entry */
   private final Supplier<? extends I> entry;
-  /** Registry name for this entry, allows fetching the name before the entry resolves if registry object is used */
+  /** Registry name for this entry, allows fetching the name before the entry resolves if a deferred holder is used */
   @Getter
   private final ResourceLocation id;
 
@@ -36,10 +36,10 @@ public class ItemObject<I extends ItemLike> implements Supplier<I>, ItemLike, Id
   }
 
   /**
-   * Creates a new item object using the given registry object. This variant can resolve its name before the registry object entry resolves
+   * Creates a new item object using the given deferred holder. This variant can resolve its name before the registry entry resolves.
    * @param object  Object base
    */
-  public ItemObject(RegistryObject<? extends I> object) {
+  public ItemObject(DeferredHolder<?, ? extends I> object) {
     this.entry = object;
     this.id = object.getId();
   }
@@ -71,8 +71,7 @@ public class ItemObject<I extends ItemLike> implements Supplier<I>, ItemLike, Id
   public I getOrNull() {
     try {
       return entry.get();
-    } catch (NullPointerException e) {
-      // thrown by RegistryObject if missing value
+    } catch (NullPointerException | IllegalStateException e) {
       return null;
     }
   }

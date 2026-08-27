@@ -3,7 +3,6 @@ package slimeknights.mantle.recipe.helper;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
-import io.github.fabricators_of_create.porting_lib.util.CraftingHelper;
 import lombok.RequiredArgsConstructor;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.tags.TagKey;
@@ -33,26 +32,11 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
   /** Empty instance */
   public static final ItemOutput EMPTY = new OfStack(ItemStack.EMPTY);
 
-
-  /**
-   * Gets the item output of this recipe
-   * @return  Item output
-   */
   @Override
   public abstract ItemStack get();
 
-  /**
-   * Writes this output to JSON
-   * @param  writeCount  If true, serializes the count
-   * @return  Json element
-   */
   public abstract JsonElement serialize(boolean writeCount);
 
-  /**
-   * Creates a new output for the given stack
-   * @param stack  Stack
-   * @return  Output
-   */
   public static ItemOutput fromStack(ItemStack stack) {
     if (stack.isEmpty()) {
       return EMPTY;
@@ -60,62 +44,30 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
     return new OfStack(stack);
   }
 
-  /**
-   * Creates a new output for the given item
-   * @param item  Item
-   * @param count Stack count
-   * @return  Output
-   */
   public static ItemOutput fromItem(ItemLike item, int count) {
     return new OfItem(item.asItem(), count);
   }
 
-  /**
-   * Creates a new output for the given item
-   * @param item  Item
-   * @return  Output
-   */
   public static ItemOutput fromItem(ItemLike item) {
     return fromItem(item, 1);
   }
 
-  /**
-   * Creates a new output for the given tag
-   * @param tag   Tag
-   * @param count Stack count
-   * @return Output
-   */
   public static ItemOutput fromTag(TagKey<Item> tag, int count) {
     return new OfTagPreference(tag, count);
   }
 
-  /**
-   * Creates a new output for the given tag
-   * @param tag  Tag
-   * @return Output
-   */
   public static ItemOutput fromTag(TagKey<Item> tag) {
     return fromTag(tag, 1);
   }
 
-  /**
-   * Writes this output to the packet buffer
-   * @param buffer  Packet buffer instance
-   */
   public void write(FriendlyByteBuf buffer) {
     buffer.writeItem(get());
   }
 
-  /**
-   * Reads an item output from the packet buffer
-   * @param buffer  Buffer instance
-   * @return  Item output
-   */
   public static ItemOutput read(FriendlyByteBuf buffer) {
     return fromStack(buffer.readItem());
   }
 
-  /** Class for an output that is just an item, simplifies NBT for serializing as vanilla forces NBT to be set for tools and forge goes through extra steps when NBT is set */
   @RequiredArgsConstructor
   private static class OfItem extends ItemOutput {
     private final Item item;
@@ -138,13 +90,11 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
         json.add("item", item);
         json.addProperty("count", count);
         return json;
-      } else {
-        return item;
       }
+      return item;
     }
   }
 
-  /** Class for an output that is just a stack */
   @RequiredArgsConstructor
   private static class OfStack extends ItemOutput {
     private final ItemStack stack;
@@ -163,7 +113,6 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
     }
   }
 
-  /** Class for an output from a tag preference */
   @RequiredArgsConstructor
   private static class OfTagPreference extends ItemOutput {
     private final TagKey<Item> tag;
@@ -172,12 +121,7 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
 
     @Override
     public ItemStack get() {
-      // cache the result from the tag preference to save effort, especially helpful if the tag becomes invalid
-      // this object should only exist in recipes so no need to invalidate the cache
       if (cachedResult == null) {
-        // if the preference is empty, do not cache it.
-        // This should only happen if someone scans recipes before tag are computed in which case we cache the wrong resolt.
-        // We protect against empty tags in our recipes via conditions.
         Optional<Item> preference = TagPreference.getPreference(tag);
         if (preference.isEmpty()) {
           return ItemStack.EMPTY;
@@ -198,15 +142,10 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
     }
   }
 
-  /** Loadable logic for an ItemOutput */
   public enum Loadable implements slimeknights.mantle.data.loadable.Loadable<ItemOutput> {
-    /** Loadable for an output that may be empty with a fixed size of 1 */
     OPTIONAL_ITEM(false, false),
-    /** Loadable for an output that may be empty with any size */
     OPTIONAL_STACK(false, true),
-    /** Loadable for an output that may not empty with a fixed size of 1 */
     REQUIRED_ITEM(true, false),
-    /** Loadable for an output that may not be empty with any size */
     REQUIRED_STACK(true, true);
 
     private final boolean nonEmpty;
@@ -215,8 +154,6 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
     Loadable(boolean nonEmpty, boolean readCount) {
       this.nonEmpty = nonEmpty;
       this.readCount = readCount;
-      // figure out the stack serializer to use based on the two parameters
-      // we always do NBT, just those that vary
       if (nonEmpty) {
         this.stack = readCount ? ItemStackLoadable.REQUIRED_STACK_NBT : ItemStackLoadable.REQUIRED_ITEM_NBT;
       } else {
@@ -226,8 +163,6 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
 
     @Override
     public ItemOutput convert(JsonElement element, String key) {
-      // if it's a primitive, parse it directly with the stack logic
-      // that handles single items and ensures both count and non-empty
       if (element.isJsonPrimitive()) {
         return fromStack(stack.convert(element, key));
       }
@@ -235,7 +170,6 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
       if (json.has("tag")) {
         TagKey<Item> tag = Loadables.ITEM_TAG.getIfPresent(json, "tag");
         int count = 1;
-        // 0 count field means we load count from JSON
         if (readCount) {
           count = IntLoadable.FROM_ONE.getOrDefault(json, "count", 1);
         }
@@ -262,20 +196,14 @@ public abstract class ItemOutput implements Supplier<ItemStack> {
       stack.encode(buffer, object.get());
     }
 
-
-    /* Defaulting behavior */
-
-    /** Gets the output, defaulting to empty. Note this will not stop you from getting empty with a non-empty loadable, thats on you for weirdly calling. */
     public ItemOutput getOrEmpty(JsonObject parent, String key) {
       return getOrDefault(parent, key, ItemOutput.EMPTY);
     }
 
-    /** Creates a field defaulting to empty */
     public <P> LoadableField<ItemOutput,P> emptyField(String key, boolean serializeDefault, Function<P,ItemOutput> getter) {
       return defaultField(key, ItemOutput.EMPTY, serializeDefault, getter);
     }
 
-    /** Creates a field defaulting to empty that does not serialize if empty */
     public <P> LoadableField<ItemOutput,P> emptyField(String key, Function<P,ItemOutput> getter) {
       return emptyField(key, false, getter);
     }

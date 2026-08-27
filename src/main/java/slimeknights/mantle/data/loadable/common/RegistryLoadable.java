@@ -3,6 +3,7 @@ package slimeknights.mantle.data.loadable.common;
 import com.google.gson.JsonSyntaxException;
 import io.netty.handler.codec.DecoderException;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -11,7 +12,7 @@ import slimeknights.mantle.util.RegistryHelper;
 
 import java.util.Objects;
 
-/** Loadable for a registry entry */
+/** Loadable for a registry entry from a built-in registry. */
 public record RegistryLoadable<T>(Registry<T> registry, ResourceLocation registryId) implements ResourceLocationLoadable<T> {
   public RegistryLoadable(ResourceKey<? extends Registry<T>> registryId) {
     this(Objects.requireNonNull(RegistryHelper.getRegistry(registryId), "Unknown registry " + registryId.location()), registryId.location());
@@ -19,7 +20,7 @@ public record RegistryLoadable<T>(Registry<T> registry, ResourceLocation registr
 
   @SuppressWarnings("unchecked")
   public RegistryLoadable(Registry<T> registry) {
-    this(registry, ((Registry<Registry<?>>)Registry.REGISTRY).getKey(registry));
+    this(registry, Objects.requireNonNull(((Registry<Registry<?>>) BuiltInRegistries.REGISTRY).getKey(registry)));
   }
 
   @Override
@@ -54,6 +55,6 @@ public record RegistryLoadable<T>(Registry<T> registry, ResourceLocation registr
 
   @Override
   public void encode(FriendlyByteBuf buffer, T object) {
-    buffer.writeId(registry, object);
+    buffer.writeVarInt(registry.getId(object));
   }
 }

@@ -1,19 +1,23 @@
 package slimeknights.mantle.registration.deferred;
 
+import com.google.common.base.Suppliers;
+import io.github.fabricators_of_create.porting_lib.fluids.BaseFlowingFluid;
+import io.github.fabricators_of_create.porting_lib.fluids.BaseFlowingFluid.Properties;
 import io.github.fabricators_of_create.porting_lib.fluids.FluidType;
-import io.github.fabricators_of_create.porting_lib.fluids.PortingLibFluids;
-import io.github.fabricators_of_create.porting_lib.util.RegistryObject;
+import io.github.fabricators_of_create.porting_lib.registry.DeferredHolder;
 import lombok.Setter;
 import lombok.experimental.Accessors;
-import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.FlowingFluid;
 import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.material.MapColor;
+import net.minecraft.world.level.material.PushReaction;
 import slimeknights.mantle.fluid.TextureFluidType;
 import slimeknights.mantle.fluid.UnplaceableFluid;
 import slimeknights.mantle.registration.DelayedSupplier;
@@ -22,21 +26,18 @@ import slimeknights.mantle.registration.ItemProperties;
 import slimeknights.mantle.registration.object.FlowingFluidObject;
 import slimeknights.mantle.registration.object.FluidObject;
 
+import javax.annotation.Nullable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-/**
- * Deferred register solving the nightmare that is registering fluids with Forge
- */
+/** Deferred registration helper for Mantle fluids on Fabric. */
 @SuppressWarnings({"unused", "WeakerAccess"})
 public class FluidDeferredRegister extends DeferredRegisterWrapper<Fluid> {
-  private final SynchronizedDeferredRegister<FluidType> fluidTypeRegister;
   private final SynchronizedDeferredRegister<Block> blockRegister;
   private final SynchronizedDeferredRegister<Item> itemRegister;
 
   public FluidDeferredRegister(String modID) {
     super(Registries.FLUID, modID);
-    this.fluidTypeRegister = SynchronizedDeferredRegister.create(PortingLibFluids.FLUID_TYPE_REGISTRY, modID);
     this.blockRegister = SynchronizedDeferredRegister.create(Registries.BLOCK, modID);
     this.itemRegister = SynchronizedDeferredRegister.create(Registries.ITEM, modID);
   }
@@ -44,34 +45,24 @@ public class FluidDeferredRegister extends DeferredRegisterWrapper<Fluid> {
   @Override
   public void register() {
     super.register();
-    fluidTypeRegister.register();
     blockRegister.register();
     itemRegister.register();
   }
 
   /**
-   * Registers a fluid type to the registry
-   * @param name  Name of the fluid to register
-   * @param sup   Fluid supplier
-   * @param <I>   Fluid type
-   * @return  Fluid to supply
+   * Creates a memoized fluid-type supplier. Porting Lib 1.21 stores the type on the flowing fluid
+   * rather than in a separate registry.
    */
-  public <I extends FluidType> RegistryObject<I> registerType(String name, Supplier<? extends I> sup) {
-    return fluidTypeRegister.register(name, sup);
+  public <I extends FluidType> Supplier<I> registerType(String name, Supplier<? extends I> supplier) {
+    return Suppliers.memoize(supplier::get);
   }
 
-  /**
-   * Registers a fluid to the registry
-   * @param name  Name of the fluid to register
-   * @param sup   Fluid supplier
-   * @param <I>   Fluid type
-   * @return  Fluid to supply
-   */
-  public <I extends Fluid> RegistryObject<I> registerFluid(String name, Supplier<? extends I> sup) {
-    return register.register(name, sup);
+  /** Registers a fluid to the vanilla fluid registry. */
+  public <I extends Fluid> DeferredHolder<Fluid,I> registerFluid(String name, Supplier<? extends I> supplier) {
+    return register.register(name, supplier);
   }
 
-  /** Starts a builder for a fluid */
+  /** Starts a builder for a fluid. */
   public Builder register(String name) {
     return new Builder(name);
   }
@@ -81,7 +72,7 @@ public class FluidDeferredRegister extends DeferredRegisterWrapper<Fluid> {
   public class Builder extends FluidBuilder<Builder> {
     private final String name;
     private final DelayedSupplier<Fluid> stillDelayed = new DelayedSupplier<>();
-    /** Name to use for the tag, defaults to the fluid name */
+    /** Name to use for the common tag, defaults to the fluid name. */
     private String tagName;
 
     private Builder(String name) {
@@ -91,77 +82,60 @@ public class FluidDeferredRegister extends DeferredRegisterWrapper<Fluid> {
 
     /* Fluid type */
 
-    /** Registers the passed fluid type */
-    public Builder type(Supplier<? extends FluidType> type) {
+    public Builder type(Supplier<? extends FluidType> supplier) {
       if (this.type != null) {
         throw new IllegalStateException("Type already created for " + name);
       }
-      this.type = fluidTypeRegister.register(name, type);
+      this.type = Suppliers.memoize(supplier::get);
       return this;
     }
 
-    /** Registers a fluid with the given properties, using the texture fluid type */
     public Builder type(FluidType.Properties properties) {
       return type(() -> new TextureFluidType(properties));
     }
 
-    /** Registers a fluid with the given properties, using the texture fluid type */
     public Builder type() {
       return type(FluidType.Properties.create());
     }
 
-
     /* Bucket */
 
-    /** Creates the bucket using the given supplier */
-    public Builder bucket(Function<Supplier<? extends Fluid>, Item> constructor) {
+    public Builder bucket(Function<Supplier<? extends Fluid>,Item> constructor) {
       if (this.bucket != null) {
         throw new IllegalStateException("Bucket already created for " + name);
       }
       return bucket(itemRegister.register(name + "_bucket", () -> constructor.apply(stillDelayed)));
     }
 
-    /** Creates the default bucket */
     public Builder bucket() {
-      return bucket(itemRegister.register(name + "_bucket", () -> new BucketItem(stillDelayed, ItemProperties.BUCKET_PROPS)));
+      return bucket(itemRegister.register(name + "_bucket", () -> new BucketItem(stillDelayed.get(), ItemProperties.BUCKET_PROPS)));
     }
-
 
     /* Block */
 
-    /** Creates the block form using the given supplier */
-    @SuppressWarnings({"unchecked", "rawtypes"})  // if you are calling this method, you must have a flowing fluid by the end, we throw later if not
-    public Builder block(Function<Supplier<? extends FlowingFluid>, LiquidBlock> constructor) {
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    public Builder block(Function<Supplier<? extends FlowingFluid>,LiquidBlock> constructor) {
       if (this.block != null) {
         throw new IllegalStateException("Block already created for " + name);
       }
       return block(blockRegister.register(name + "_fluid", () -> constructor.apply((Supplier<FlowingFluid>)(Supplier)stillDelayed)));
     }
 
-    /** Creates the default block from the given material and light level */
-    public Builder block(Material material, int lightLevel) {
-      return block(sup -> new LiquidBlock(sup, BlockBehaviour.Properties.of(material).lightLevel(state -> lightLevel).noCollission().strength(100.0F).noLootTable()));
+    /** Creates the default liquid block with 1.21 block properties. */
+    public Builder block(MapColor color, int lightLevel) {
+      return block(supplier -> new LiquidBlock(supplier.get(), createProperties(color, lightLevel)));
     }
 
-    /** Creates the default block from the given material */
-    public Builder block(Material material) {
-      return block(material, material == Material.LAVA ? 15 : 0);
+    public Builder block(MapColor color) {
+      return block(color, 0);
     }
-
 
     /* Final fluid */
 
-    /** Builds an unplacable fluid with the default constructor */
     public FluidObject<UnplaceableFluid> unplacable() {
       return unplacable(UnplaceableFluid::new);
     }
 
-    /**
-     * Builds an unplacable fluid with the passed constructor
-     * @param constructor  Constructor taking a fluid type and bucket supplier. Note the bucket supplier may be null.
-     * @param <F> Resulting fluid type
-     * @return  Fluid object instance
-     */
     public <F extends Fluid> FluidObject<F> unplacable(Function<FluidBuilder<?>,F> constructor) {
       if (block != null) {
         throw new IllegalStateException("Cannot build an unplacable fluid with a block form");
@@ -169,40 +143,45 @@ public class FluidDeferredRegister extends DeferredRegisterWrapper<Fluid> {
       if (type == null) {
         this.type();
       }
-      RegistryObject<F> fluid = registerFluid(name, () -> constructor.apply(this));
+      DeferredHolder<Fluid,F> fluid = registerFluid(name, () -> constructor.apply(this));
       stillDelayed.setSupplier(fluid);
       return new FluidObject<>(resource(name), tagName, type, fluid);
     }
 
-    /** Builds a flowing fluid with the default constructors */
-    public FlowingFluidObject<ForgeFlowingFluid> flowing() {
-      return flowing(ForgeFlowingFluid.Source::new, ForgeFlowingFluid.Flowing::new);
+    public FlowingFluidObject<BaseFlowingFluid> flowing() {
+      return flowing(BaseFlowingFluid.Source::new, BaseFlowingFluid.Flowing::new);
     }
 
-    /**
-     * Builds a flowing fluid with the given constructors
-     * @param createStill     Still constructor taking forge fluid properties, will contain the type, bucket, block, and flowing forms
-     * @param createFlowing   Flowing constructor taking forge fluid properties, will contain the type, bucket, block, and still forms
-     * @param <F>  Type of fluids being created
-     * @return  Flowing fluid object instance
-     */
-    public <F extends FlowingFluid> FlowingFluidObject<F> flowing(Function<Properties,? extends F> createStill, Function<Properties,? extends F> createFlowing) {
+    public <F extends FlowingFluid> FlowingFluidObject<F> flowing(Function<Properties,? extends F> createStill,
+                                                                  Function<Properties,? extends F> createFlowing) {
       if (type == null) {
         this.type();
       }
 
-      // create props with the suppliers
       DelayedSupplier<FlowingFluid> flowingDelayed = new DelayedSupplier<>();
-      Properties props = build(type, stillDelayed, flowingDelayed);
+      Properties properties = build(type, stillDelayed, flowingDelayed);
 
-      // create fluids now that we have props
-      Supplier<F> still = registerFluid(name, () -> createStill.apply(props));
+      DeferredHolder<Fluid,F> still = registerFluid(name, () -> createStill.apply(properties));
       stillDelayed.setSupplier(still);
-      Supplier<F> flowing = registerFluid("flowing_" + name, () -> createFlowing.apply(props));
+      DeferredHolder<Fluid,F> flowing = registerFluid("flowing_" + name, () -> createFlowing.apply(properties));
       flowingDelayed.setSupplier(flowing);
 
-      // return the final nice object
       return new FlowingFluidObject<>(resource(name), tagName, type, still, flowing, this.block);
     }
+  }
+
+  /** Creates the standard 1.21 liquid-block properties. */
+  public static BlockBehaviour.Properties createProperties(MapColor color, int lightLevel) {
+    return BlockBehaviour.Properties.of()
+      .mapColor(color)
+      .replaceable()
+      .noCollission()
+      .randomTicks()
+      .strength(100.0F)
+      .lightLevel(state -> lightLevel)
+      .pushReaction(PushReaction.DESTROY)
+      .noLootTable()
+      .liquid()
+      .sound(SoundType.EMPTY);
   }
 }

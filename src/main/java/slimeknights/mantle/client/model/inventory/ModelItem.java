@@ -2,9 +2,10 @@ package slimeknights.mantle.client.model.inventory;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
-import com.mojang.math.Vector3f;
 import lombok.Getter;
 import net.minecraft.util.GsonHelper;
+import net.minecraft.world.item.ItemDisplayContext;
+import org.joml.Vector3f;
 import slimeknights.mantle.client.model.util.ModelHelper;
 import slimeknights.mantle.util.JsonHelper;
 
@@ -80,8 +81,8 @@ public class ModelItem {
   /** Parses a transform type from a string */
   private static ItemDisplayContext parseTransformType(JsonObject json, String key) {
     String name = GsonHelper.getAsString(json, key, "none");
-    for (TransformType type : TransformType.values()) {
-      if (name.equals(type.getSerializeName())) {
+    for (ItemDisplayContext type : ItemDisplayContext.values()) {
+      if (name.equals(type.getSerializedName())) {
         return type;
       }
     }

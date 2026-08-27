@@ -2,20 +2,19 @@
 // See: https://github.com/BluSunrize/ImmersiveEngineering/blob/1.18/src/main/java/blusunrize/immersiveengineering/common/util/fakeworld/TemplateWorld.java
 package slimeknights.mantle.client.book.structure.level;
 
-import com.google.common.collect.ImmutableList;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
-import net.minecraft.core.Registry;
-import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.profiling.InactiveProfiler;
+import net.minecraft.world.TickRateManager;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.flag.FeatureFlagSet;
+import net.minecraft.world.item.alchemy.PotionBrewing;
 import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
@@ -24,12 +23,12 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkSource;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
-import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.entity.LevelEntityGetter;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.gameevent.GameEvent.Context;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate.StructureBlockInfo;
 import net.minecraft.world.level.material.Fluid;
+import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.scores.Scoreboard;
@@ -44,23 +43,19 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Predicate;
 
-/**
- * World implementation for the book structures
- */
+/** World implementation for the book structures. */
 public class TemplateLevel extends Level {
-
-  private final Map<String, MapItemSavedData> maps = new HashMap<>();
+  private final Map<MapId, MapItemSavedData> maps = new HashMap<>();
   private final Scoreboard scoreboard = new Scoreboard();
-  private final RecipeManager recipeManager = new RecipeManager();
+  private int nextMapId = 0;
   private final TemplateChunkSource chunkSource;
-  private final RegistryAccess registries = Objects.requireNonNull(Minecraft.getInstance().level).registryAccess();
 
   public TemplateLevel(List<StructureBlockInfo> blocks, Predicate<BlockPos> shouldShow) {
     super(
-      new FakeLevelData(), Level.OVERWORLD, Minecraft.getInstance().level.registryAccess(), Objects.requireNonNull(Minecraft.getInstance().level).registryAccess().registryOrThrow(Registries.DIMENSION_TYPE).getHolderOrThrow(BuiltinDimensionTypes.OVERWORLD),
+      new FakeLevelData(), Level.OVERWORLD, Objects.requireNonNull(Minecraft.getInstance().level).registryAccess(),
+      Objects.requireNonNull(Minecraft.getInstance().level).registryAccess().registryOrThrow(Registries.DIMENSION_TYPE).getHolderOrThrow(BuiltinDimensionTypes.OVERWORLD),
       () -> InactiveProfiler.INSTANCE, true, false, 0, 0
     );
-
     this.chunkSource = new TemplateChunkSource(blocks, this, shouldShow);
   }
 
@@ -68,25 +63,10 @@ public class TemplateLevel extends Level {
   public void sendBlockUpdated(@Nonnull BlockPos pos, @Nonnull BlockState oldState, @Nonnull BlockState newState, int flags) {}
 
   @Override
-  public void playSeededSound(@org.jetbrains.annotations.Nullable Player player, double d, double e, double f, Holder<SoundEvent> holder, SoundSource soundSource, float g, float h, long l) {
-
-  }
+  public void playSeededSound(@Nullable Player player, double x, double y, double z, Holder<SoundEvent> sound, SoundSource source, float volume, float pitch, long seed) {}
 
   @Override
-  public void playSeededSound(@org.jetbrains.annotations.Nullable Player player, double d, double e, double f, SoundEvent soundEvent, SoundSource soundSource, float g, float h, long l) {
-
-  }
-
-  @Override
-  public void playSeededSound(@org.jetbrains.annotations.Nullable Player player, Entity entity, Holder<SoundEvent> soundEventHolder, SoundSource soundSource, float f, float g, long l) {
-
-  }
-
-  @Override
-  public void playSeededSound(@Nullable Player pPlayer, double pX, double pY, double pZ, SoundEvent pSoundEvent, SoundSource pSoundSource, float pVolume, float pPitch, long pSeed) {}
-
-  @Override
-  public void playSeededSound(@Nullable Player pPlayer, Entity pEntity, SoundEvent pSoundEvent, SoundSource pSoundSource, float pVolume, float pPitch, long pSeed) {}
+  public void playSeededSound(@Nullable Player player, Entity entity, Holder<SoundEvent> sound, SoundSource category, float volume, float pitch, long seed) {}
 
   @Override
   public String gatherChunkSourceStats() {
@@ -101,19 +81,35 @@ public class TemplateLevel extends Level {
 
   @Nullable
   @Override
-  public MapItemSavedData getMapData(@Nonnull String mapName) {
-    return this.maps.get(mapName);
+  public MapItemSavedData getMapData(MapId mapId) {
+    return this.maps.get(mapId);
   }
 
   @Override
-  public void setMapData(String mapId, MapItemSavedData mapDataIn) {
-    this.maps.put(mapId, mapDataIn);
+  public void setMapData(MapId mapId, MapItemSavedData mapData) {
+    this.maps.put(mapId, mapData);
   }
 
   @Override
-  public int getFreeMapId() {
-    return this.maps.size();
+  public MapId getFreeMapId() {
+    return new MapId(nextMapId++);
   }
+
+  @Override
+  public float getDayTimeFraction() {
+    return 0;
+  }
+
+  @Override
+  public void setDayTimeFraction(float dayTimeFraction) {}
+
+  @Override
+  public float getDayTimePerTick() {
+    return -1;
+  }
+
+  @Override
+  public void setDayTimePerTick(float dayTimePerTick) {}
 
   @Override
   public void destroyBlockProgress(int breakerId, @Nonnull BlockPos pos, int progress) {}
@@ -127,7 +123,7 @@ public class TemplateLevel extends Level {
   @Nonnull
   @Override
   public RecipeManager getRecipeManager() {
-    return this.recipeManager;
+    return Objects.requireNonNull(Minecraft.getInstance().level).getRecipeManager();
   }
 
   @Override
@@ -157,15 +153,16 @@ public class TemplateLevel extends Level {
   public void levelEvent(@Nullable Player player, int type, @Nonnull BlockPos pos, int data) {}
 
   @Override
-  public void gameEvent(GameEvent gameEvent, Vec3 vec3, GameEvent.Context context) {}
+  public void gameEvent(Holder<GameEvent> event, Vec3 position, Context context) {}
 
   @Override
-  public void gameEvent(GameEvent pEvent, Vec3 pPosition, Context pContext) {}
+  public PotionBrewing potionBrewing() {
+    return PotionBrewing.EMPTY;
+  }
 
-  @Nonnull
   @Override
-  public RegistryAccess registryAccess() {
-    return this.registries;
+  public TickRateManager tickRateManager() {
+    return new TickRateManager();
   }
 
   @Override
@@ -174,19 +171,19 @@ public class TemplateLevel extends Level {
   }
 
   @Override
-  public float getShade(@Nonnull Direction p_230487_1_, boolean p_230487_2_) {
+  public float getShade(@Nonnull Direction direction, boolean shade) {
     return 1;
   }
 
   @Nonnull
   @Override
   public List<? extends Player> players() {
-    return ImmutableList.of();
+    return List.of();
   }
 
   @Nonnull
   @Override
   public Holder<Biome> getUncachedNoiseBiome(int x, int y, int z) {
-    return registries.registryOrThrow(Registries.BIOME).getHolderOrThrow(Biomes.PLAINS);
+    return registryAccess().registryOrThrow(Registries.BIOME).getHolderOrThrow(Biomes.PLAINS);
   }
 }

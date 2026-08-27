@@ -1,14 +1,12 @@
 package slimeknights.mantle.client.screen.book;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import io.github.fabricators_of_create.porting_lib.util.client.ScreenUtils;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.network.chat.Component;
 import org.apache.commons.lang3.StringUtils;
-import org.joml.Matrix4f;
 import slimeknights.mantle.Mantle;
 import slimeknights.mantle.client.book.data.element.TextData;
 
@@ -19,27 +17,21 @@ import java.util.Optional;
 
 public class TextDataRenderer {
 
-  /**
-   * @deprecated Call drawText with tooltip param and then call drawTooltip separately on the tooltip layer to prevent overlap
-   */
+  /** @deprecated Call drawText with tooltip param and then call drawTooltip separately on the tooltip layer to prevent overlap */
   @Deprecated
-  public static String drawText(GuiGraphics guiGraphics, int x, int y, int boxWidth, int boxHeight, TextData[] data, int mouseX, int mouseY, Font fr, BookScreen parent) {
+  public static String drawText(GuiGraphics graphics, int x, int y, int boxWidth, int boxHeight, TextData[] data, int mouseX, int mouseY, Font fr, BookScreen parent) {
     List<Component> tooltip = new ArrayList<>();
-    String action = drawText(guiGraphics, x, y, boxWidth, boxHeight, data, mouseX, mouseY, fr, tooltip);
-
-    if (tooltip.size() > 0) {
-      guiGraphics.renderTooltip(fr, tooltip, Optional.empty(), mouseX, mouseY/*, fr*/);
+    String action = drawText(graphics, x, y, boxWidth, boxHeight, data, mouseX, mouseY, fr, tooltip);
+    if (!tooltip.isEmpty()) {
+      graphics.renderTooltip(fr, tooltip, Optional.empty(), mouseX, mouseY);
     }
-
     return action;
   }
 
-  public static String drawText(GuiGraphics guiGraphics, int x, int y, int boxWidth, int boxHeight, TextData[] data, int mouseX, int mouseY, Font fr, List<Component> tooltip) {
+  public static String drawText(GuiGraphics graphics, int x, int y, int boxWidth, int boxHeight, TextData[] data, int mouseX, int mouseY, Font fr, List<Component> tooltip) {
     String action = "";
-
     int atX = x;
     int atY = y;
-
     float prevScale = 1.F;
 
     for (TextData item : data) {
@@ -47,7 +39,14 @@ public class TextDataRenderer {
       int box2X, box2Y = 9999, box2W, box2H;
       int box3X = 9999, box3Y = 9999, box3W, box3H;
 
-      if (item == null || item.text == null || item.text.isEmpty()) {
+      if (item == null) {
+        continue;
+      }
+      if (item.text == null || item.text.isEmpty()) {
+        if (item.linebreak) {
+          atX = x;
+          atY += fr.lineHeight;
+        }
         continue;
       }
       if (item.text.equals("\n")) {
@@ -60,43 +59,26 @@ public class TextDataRenderer {
         atX = x;
         atY += fr.lineHeight * 2 * prevScale;
       }
-
       prevScale = item.scale;
 
       String modifiers = "";
-
       if (item.useOldColor) {
         ChatFormatting colFormat = ChatFormatting.getByName(item.color);
-        if(colFormat != null) {
+        if (colFormat != null) {
           modifiers += colFormat;
         } else {
-          modifiers += "unknown color"; // more descriptive than null
-
-          // This will spam the console, but that makes the error more obvious
+          modifiers += "unknown color";
           Mantle.logger.error("Failed to parse color: " + item.color + " for text rendering.");
         }
       }
-
-      if (item.bold) {
-        modifiers += ChatFormatting.BOLD;
-      }
-      if (item.italic) {
-        modifiers += ChatFormatting.ITALIC;
-      }
-      if (item.underlined) {
-        modifiers += ChatFormatting.UNDERLINE;
-      }
-      if (item.strikethrough) {
-        modifiers += ChatFormatting.STRIKETHROUGH;
-      }
-      if (item.obfuscated) {
-        modifiers += ChatFormatting.OBFUSCATED;
-      }
+      if (item.bold) modifiers += ChatFormatting.BOLD;
+      if (item.italic) modifiers += ChatFormatting.ITALIC;
+      if (item.underlined) modifiers += ChatFormatting.UNDERLINE;
+      if (item.strikethrough) modifiers += ChatFormatting.STRIKETHROUGH;
+      if (item.obfuscated) modifiers += ChatFormatting.OBFUSCATED;
 
       String text = translateString(item.text);
-
       String[] split = cropStringBySize(text, modifiers, boxWidth, boxHeight - (atY - y), boxWidth - (atX - x), fr, item.scale);
-
       box1X = atX;
       box1Y = atY;
       box2X = x;
@@ -107,62 +89,49 @@ public class TextDataRenderer {
           box3X = atX;
           box3Y = atY;
         }
-
         String s = split[i];
-        drawScaledString(guiGraphics, fr, modifiers + s, atX, atY, item.rgbColor, item.dropshadow, item.scale);
-
+        drawScaledString(graphics, fr, modifiers + s, atX, atY, item.rgbColor, item.dropshadow, item.scale);
         if (i < split.length - 1) {
-          atY += fr.lineHeight;
+          atY += fr.lineHeight * item.scale;
           atX = x;
         }
-
         if (i == 0) {
           box2Y = atY;
-
-          if (atX == x) {
-            box1W = x + boxWidth;
-          } else {
-            box1W = atX;
-          }
+          box1W = atX == x ? x + boxWidth : atX;
         }
       }
 
       box2H = atY;
-
       atX += fr.width(split[split.length - 1]) * item.scale;
-      if (atX - x >= boxWidth) {
+      if (item.linebreak || atX - x >= boxWidth) {
         atX = x;
         atY += fr.lineHeight * item.scale;
       }
-
       box3W = atX;
       box3H = (int) (atY + fr.lineHeight * item.scale);
 
       boolean mouseInside = (mouseX >= box1X && mouseX <= box1W && mouseY >= box1Y && mouseY <= box1H && box1X != box1W && box1Y != box1H)
-                            || (mouseX >= box2X && mouseX <= box2W && mouseY >= box2Y && mouseY <= box2H && box2X != box2W && box2Y != box2H)
-                            || (mouseX >= box3X && mouseX <= box3W && mouseY >= box3Y && mouseY <= box3H && box3X != box3W && box1Y != box3H);
+        || (mouseX >= box2X && mouseX <= box2W && mouseY >= box2Y && mouseY <= box2H && box2X != box2W && box2Y != box2H)
+        || (mouseX >= box3X && mouseX <= box3W && mouseY >= box3Y && mouseY <= box3H && box3X != box3W && box1Y != box3H);
+
       if (item.tooltip != null && item.tooltip.length > 0) {
         if (BookScreen.debug) {
-          Matrix4f matrix = guiGraphics.pose().last().pose();
-          ScreenUtils.drawGradientRect(matrix, 0, box1X,  box1Y,  box1W,      box1H,      0xFF00FF00, 0xFF00FF00);
-          ScreenUtils.drawGradientRect(matrix, 0, box2X,  box2Y,  box2W,      box2H,      0xFFFF0000, 0xFFFF0000);
-          ScreenUtils.drawGradientRect(matrix, 0, box3X,  box3Y,  box3W,      box3H,      0xFF0000FF, 0xFF0000FF);
-          ScreenUtils.drawGradientRect(matrix, 0, mouseX, mouseY, mouseX + 5, mouseY + 5, 0xFFFF00FF, 0xFFFFFF00);
+          graphics.fillGradient(box1X, box1Y, box1W, box1H, 0xFF00FF00, 0xFF00FF00);
+          graphics.fillGradient(box2X, box2Y, box2W, box2H, 0xFFFF0000, 0xFFFF0000);
+          graphics.fillGradient(box3X, box3Y, box3W, box3H, 0xFF0000FF, 0xFF0000FF);
+          graphics.fillGradient(mouseX, mouseY, mouseX + 5, mouseY + 5, 0xFFFF00FF, 0xFFFFFF00);
         }
-
         if (mouseInside) {
           tooltip.addAll(Arrays.asList(item.tooltip));
         }
       }
 
-      if (item.action != null && !item.action.isEmpty()) {
-        if (mouseInside) {
-          action = item.action;
-        }
+      if (item.action != null && !item.action.isEmpty() && mouseInside) {
+        action = item.action;
       }
 
       if (atY >= y + boxHeight) {
-        guiGraphics.drawString(fr, "...", atX, atY, 0, item.dropshadow);
+        graphics.drawString(fr, "...", atX, atY, 0, item.dropshadow);
         break;
       }
       y = atY;
@@ -172,22 +141,18 @@ public class TextDataRenderer {
       tooltip.add(Component.empty());
       tooltip.add(Component.literal("Action: " + action).withStyle(ChatFormatting.GRAY));
     }
-
     return action;
   }
 
   public static String translateString(String s) {
     s = s.replace("$$(", "$\0(").replace(")$$", ")\0$");
-
     while (s.contains("$(") && s.contains(")$") && s.indexOf("$(") < s.indexOf(")$")) {
       String loc = s.substring(s.indexOf("$(") + 2, s.indexOf(")$"));
       s = s.replace("$(" + loc + ")$", I18n.get(loc));
     }
-
     if (s.indexOf("$(") > s.indexOf(")$") || s.contains(")$")) {
       Mantle.logger.error("[Books] [TextDataRenderer] Detected unbalanced localization symbols \"$(\" and \")$\" in string: \"" + s + "\".");
     }
-
     return s.replace("$\0(", "$(").replace(")\0$", ")$");
   }
 
@@ -198,56 +163,38 @@ public class TextDataRenderer {
   public static String[] cropStringBySize(String s, String modifiers, int width, int height, int firstWidth, Font fr, float scale) {
     int curWidth = 0;
     int curHeight = (int) (fr.lineHeight * scale);
-
     for (int i = 0; i < s.length(); i++) {
       curWidth += fr.width(modifiers + s.charAt(i)) * scale;
-
       if (s.charAt(i) == '\n' || (curHeight == (int) (fr.lineHeight * scale) ? curWidth > firstWidth : curWidth > width)) {
         int oldI = i;
         if (s.charAt(i) != '\n') {
-          while (i >= 0 && s.charAt(i) != ' ') {
-            i--;
-          }
-          if (i <= 0) {
-            i = oldI;
-          }
+          while (i >= 0 && s.charAt(i) != ' ') i--;
+          if (i <= 0) i = oldI;
         } else {
           oldI++;
         }
-
         s = s.substring(0, i) + "\r" + StringUtils.stripStart(s.substring(i + (i == oldI ? 0 : 1)), " ");
-
         i++;
         curWidth = 0;
         curHeight += fr.lineHeight * scale;
-
         if (curHeight >= height) {
           return s.substring(0, i).split("\r");
         }
       }
     }
-
     return s.split("\r");
   }
 
-  /** Gets the number of lines needed to render the given text */
   public static int getLinesForString(String s, String modifiers, int width, String prefix, Font fr) {
     return cropStringBySize(s, modifiers, width, Short.MAX_VALUE, width - fr.width(prefix), fr, 1.0f).length;
   }
 
-  //BEGIN METHODS FROM GUI
-  public static void drawScaledString(GuiGraphics guiGraphics, Font font, String text, float x, float y, int color, boolean dropShadow, float scale) {
-    guiGraphics.pose().pushPose();
-    guiGraphics.pose().translate(x, y, 0);
-    guiGraphics.pose().scale(scale, scale, 1F);
-
-    if (dropShadow) {
-      guiGraphics.drawString(font, text, 0, 0, color);
-    } else {
-      guiGraphics.drawString(font, text, 0, 0, color, false);
-    }
-
-    guiGraphics.pose().popPose();
+  public static void drawScaledString(GuiGraphics graphics, Font font, String text, float x, float y, int color, boolean dropShadow, float scale) {
+    PoseStack poseStack = graphics.pose();
+    poseStack.pushPose();
+    poseStack.translate(x, y, 0);
+    poseStack.scale(scale, scale, 1F);
+    graphics.drawString(font, text, 0, 0, color, dropShadow);
+    poseStack.popPose();
   }
-  //END METHODS FROM GUI
 }

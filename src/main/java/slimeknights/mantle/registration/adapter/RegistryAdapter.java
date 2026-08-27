@@ -1,38 +1,29 @@
 package slimeknights.mantle.registration.adapter;
 
-import lombok.RequiredArgsConstructor;
-
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.Objects;
 
 /**
- * A convenience wrapper for forge registries, to be used in combination with the {@link net.minecraftforge.registries.RegisterEvent} event.
- * Simply put it allows you to register things by passing (thing, name) instead of having to set the name inline.
- * There also is a convenience variant for items and itemblocks, see {@link ItemRegistryAdapter}.
+ * Convenience wrapper for registering entries in a vanilla registry under a fixed mod namespace.
  */
 @SuppressWarnings("WeakerAccess")
-@RequiredArgsConstructor
 public class RegistryAdapter<T> {
   private final Registry<T> registry;
   private final String modId;
 
-//  /**
-//   * Automatically creates determines the modid from the currently loading mod.
-//   * If this results in the wrong namespace, use the other constructor where you can provide the modid.
-//   * The modid is used as the namespace for resource locations, so if your mods id is "foo" it will register an item "bar" as "foo:bar".
-//   */
-//  public RegistryAdapter(Registry<T> registry) {
-//    this(registry, ModLoadingContext.get().getActiveContainer().getModId());
-//  }
+  public RegistryAdapter(Registry<T> registry, String modId) {
+    this.registry = registry;
+    this.modId = modId;
+  }
 
   /**
    * Construct a resource location that belongs to the given namespace. Usually your mod.
    * @param name  Name for location
    */
   public ResourceLocation getResource(String name) {
-    return new ResourceLocation(modId, name);
+    return ResourceLocation.fromNamespaceAndPath(modId, name);
   }
 
   /**
@@ -66,9 +57,6 @@ public class RegistryAdapter<T> {
 
   /**
    * General purpose backup registration method. In case you want to set a very specific resource location.
-   * You should probably use the special purpose methods instead of this.
-   * <p>
-   * Note: changes the things registry name. Do not call this with already registered objects!
    * @param entry     Entry to register
    * @param location  Registry name
    * @return Registry entry

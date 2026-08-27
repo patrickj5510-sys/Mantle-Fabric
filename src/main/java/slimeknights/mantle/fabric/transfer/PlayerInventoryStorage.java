@@ -36,28 +36,20 @@ class PlayerInventoryStorage extends InventoryStorage {
 
     List<SingleSlotStorage<ItemVariant>> mainSlots = getSlots().subList(0, Inventory.INVENTORY_SIZE);
 
-    // Stack into the main stack first and the offhand stack second.
     for (InteractionHand hand : InteractionHand.values()) {
       SingleSlotStorage<ItemVariant> handSlot = getHandSlot(hand);
-
       if (handSlot.getResource().equals(resource)) {
         amount -= handSlot.insert(resource, amount, tx);
-
         if (amount == 0) return initialAmount;
       }
     }
 
-    // Otherwise insert into the main slots, stacking first.
     amount -= StorageUtil.insertStacking(mainSlots, resource, amount, tx);
-
     return initialAmount - amount;
   }
 
   public void drop(ItemVariant variant, long amount, boolean throwRandomly, boolean retainOwnership, TransactionContext transaction) {
     StoragePreconditions.notBlankNotNegative(variant, amount);
-
-    // Drop in the world on the server side (will be synced by the game with the client).
-    // Dropping items is server-side only because it involves randomness.
     if (amount > 0 && !playerInventory.player.level().isClientSide()) {
       droppedStacks.addDrop(variant, amount, throwRandomly, retainOwnership, transaction);
     }
@@ -97,9 +89,7 @@ class PlayerInventoryStorage extends InventoryStorage {
 
     @Override
     protected void readSnapshot(Integer snapshot) {
-      // effectively cancel dropping the stacks
       int previousSize = snapshot;
-
       while (entries.size() > previousSize) {
         entries.remove(entries.size() - 1);
       }
@@ -107,49 +97,25 @@ class PlayerInventoryStorage extends InventoryStorage {
 
     @Override
     protected void onFinalCommit() {
-      // actually drop the stacks
       for (Entry entry : entries) {
         long remainder = entry.amount;
-
+        int maxStackSize = entry.key.toStack(1).getMaxStackSize();
         while (remainder > 0) {
-          int dropped = (int) Math.min(entry.key.getItem().getMaxStackSize(), remainder);
+          int dropped = (int) Math.min(maxStackSize, remainder);
           playerInventory.player.drop(entry.key.toStack(dropped), entry.throwRandomly, entry.retainOwnership);
           remainder -= dropped;
         }
       }
-
       entries.clear();
     }
 
-    private record Entry(ItemVariant key, long amount, boolean throwRandomly, boolean retainOwnership) {
-    }
+    private record Entry(ItemVariant key, long amount, boolean throwRandomly, boolean retainOwnership) {}
   }
 
-  /**
-   * Throw items in the world from the player's location.
-   *
-   * <p>Note: This function has full transaction support, and will not actually drop the items until the outermost transaction is committed.
-   *
-   * @param variant The variant to drop.
-   * @param amount How many of the variant to drop.
-   * @param retainOwnership If true, set the {@code Thrower} NBT data to the player's UUID.
-   * @param transaction The transaction this operation is part of.
-   * @see Player#drop(ItemStack, boolean, boolean)
-   */
   public void drop(ItemVariant variant, long amount, boolean retainOwnership, TransactionContext transaction) {
     drop(variant, amount, false, retainOwnership, transaction);
   }
 
-  /**
-   * Throw items in the world from the player's location.
-   *
-   * <p>Note: This function has full transaction support, and will not actually drop the items until the outermost transaction is committed.
-   *
-   * @param variant The variant to drop.
-   * @param amount How many of the variant to drop.
-   * @param transaction The transaction this operation is part of.
-   * @see Player#drop(ItemStack, boolean, boolean)
-   */
   public void drop(ItemVariant variant, long amount, TransactionContext transaction) {
     drop(variant, amount, false, transaction);
   }

@@ -2,8 +2,7 @@ package slimeknights.mantle.client.book.data;
 
 import com.google.common.collect.Sets;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import io.github.fabricators_of_create.porting_lib.util.TrueCondition;
+import net.fabricmc.fabric.api.resource.conditions.v1.ResourceConditions;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
@@ -12,7 +11,6 @@ import slimeknights.mantle.client.book.data.content.ContentError;
 import slimeknights.mantle.client.book.data.element.ImageData;
 import slimeknights.mantle.client.book.repository.BookRepository;
 import slimeknights.mantle.client.screen.book.BookScreen;
-import slimeknights.mantle.util.DataLoadedConditionContext;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -21,7 +19,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class SectionData implements IDataItem, IConditional {
@@ -31,7 +28,7 @@ public class SectionData implements IDataItem, IConditional {
   public Set<String> requirements = Sets.newHashSet();
   public boolean hideWhenLocked = false;
   public String data = "";
-  public JsonCondition condition = new JsonCondition(TrueCondition.ID, new JsonObject());
+  public JsonCondition condition = new JsonCondition(ResourceConditions.alwaysTrue());
 
   /** Contains arbitrary data to be used by custom transformers and other things */
   public Map<ResourceLocation, JsonElement> extraData = Collections.emptyMap();
@@ -92,15 +89,8 @@ public class SectionData implements IDataItem, IConditional {
     this.icon.load(this.source);
   }
 
-  /**
-   * Gets a list of pages from the given data
-   *
-   * @param data JSON data
-   * @return ArrayList of pages for the book
-   */
   protected ArrayList<PageData> getPages(String data) {
     List<PageData> pages = Arrays.asList(BookLoader.getGson().fromJson(data, PageData[].class));
-
     return pages.stream().filter(PageData::isConditionMet).collect(Collectors.toCollection(ArrayList::new));
   }
 
@@ -136,13 +126,11 @@ public class SectionData implements IDataItem, IConditional {
     }
 
     AdvancementProgress progress = advancementCache.getProgress(requirement);
-
     return progress != null && progress.isDone();
-
   }
 
   @Override
   public boolean isConditionMet() {
-    return condition.test(DataLoadedConditionContext.INSTANCE);
+    return condition.test();
   }
 }

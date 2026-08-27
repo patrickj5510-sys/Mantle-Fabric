@@ -4,7 +4,6 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.Dynamic2CommandExceptionType;
-import io.github.fabricators_of_create.porting_lib.attributes.PortingLibAttributes;
 import io.github.fabricators_of_create.porting_lib.fluids.FluidStack;
 import io.github.fabricators_of_create.porting_lib.transfer.TransferUtil;
 import net.fabricmc.fabric.api.transfer.v1.context.ContainerItemContext;
@@ -16,23 +15,25 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.item.alchemy.Potion;
-import net.minecraft.world.item.alchemy.PotionUtils;
-import net.minecraft.world.item.alchemy.Potions;
+import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.enchantment.Enchantment;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -47,17 +48,12 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
-/**
- * Command to list all tags for an entry
- */
+/** Command to list all tags for an entry. */
 public class TagsForCommand {
-  /** Tag type cannot be found */
   protected static final Dynamic2CommandExceptionType VALUE_NOT_FOUND = new Dynamic2CommandExceptionType((type, name) -> Component.translatable("command.mantle.tags_for.not_found", type, name));
 
-  /* Missing target errors */
   private static final Component NO_HELD_BLOCK = Component.translatable("command.mantle.tags_for.no_held_block");
   private static final Component NO_HELD_ENTITY = Component.translatable("command.mantle.tags_for.no_held_entity");
   private static final Component NO_HELD_POTION = Component.translatable("command.mantle.tags_for.no_held_potion");
@@ -65,63 +61,40 @@ public class TagsForCommand {
   private static final Component NO_HELD_ENCHANTMENT = Component.translatable("command.mantle.tags_for.no_held_enchantment");
   private static final Component NO_TARGETED_ENTITY = Component.translatable("command.mantle.tags_for.no_targeted_entity");
   private static final Component NO_TARGETED_BLOCK_ENTITY = Component.translatable("command.mantle.tags_for.no_targeted_block_entity");
-  /** Value has no tags */
   private static final Component NO_TAGS = Component.translatable("command.mantle.tags_for.no_tags");
 
-  /**
-   * Registers this sub command with the root command
-   * @param subCommand  Command builder
-   */
   public static void register(LiteralArgumentBuilder<CommandSourceStack> subCommand) {
     subCommand.requires(source -> MantleCommand.requiresDebugInfoOrOp(source, MantleCommand.PERMISSION_GAME_COMMANDS))
-              // by registry ID
-              .then(Commands.literal("id")
-                            .then(Commands.argument("type", RegistryArgument.registry()).suggests(MantleCommand.REGISTRY)
-                                          .then(Commands.argument("name", ResourceLocationArgument.id()).suggests(MantleCommand.REGISTRY_VALUES)
-                                                        .executes(TagsForCommand::runForId))))
-              // held item
-              .then(Commands.literal("held")
-                            .then(Commands.literal("item").executes(TagsForCommand::heldItem))
-                            .then(Commands.literal("block").executes(TagsForCommand::heldBlock))
-                            .then(Commands.literal("enchantment").executes(TagsForCommand::heldEnchantments))
-                            .then(Commands.literal("fluid").executes(TagsForCommand::heldFluid))
-                            .then(Commands.literal("entity").executes(TagsForCommand::heldEntity))
-                            .then(Commands.literal("potion").executes(TagsForCommand::heldPotion)))
-              // targeted
-              .then(Commands.literal("targeted")
-                            .then(Commands.literal("block_entity").executes(TagsForCommand::targetedTileEntity))
-                            .then(Commands.literal("entity").executes(TagsForCommand::targetedEntity)));
+      .then(Commands.literal("id")
+        .then(Commands.argument("type", RegistryArgument.registry()).suggests(MantleCommand.REGISTRY)
+          .then(Commands.argument("name", ResourceLocationArgument.id()).suggests(MantleCommand.REGISTRY_VALUES)
+            .executes(TagsForCommand::runForId))))
+      .then(Commands.literal("held")
+        .then(Commands.literal("item").executes(TagsForCommand::heldItem))
+        .then(Commands.literal("block").executes(TagsForCommand::heldBlock))
+        .then(Commands.literal("enchantment").executes(TagsForCommand::heldEnchantments))
+        .then(Commands.literal("fluid").executes(TagsForCommand::heldFluid))
+        .then(Commands.literal("entity").executes(TagsForCommand::heldEntity))
+        .then(Commands.literal("potion").executes(TagsForCommand::heldPotion)))
+      .then(Commands.literal("targeted")
+        .then(Commands.literal("block_entity").executes(TagsForCommand::targetedTileEntity))
+        .then(Commands.literal("entity").executes(TagsForCommand::targetedEntity)));
   }
 
-  /**
-   * Prints the final list of owning tags
-   * @param context     Command context
-   * @param registry    Registry to output
-   * @param value       Value to print
-   * @param <T>         Collection type
-   * @return  Number of tags printed
-   */
   private static <T> int printOwningTags(CommandContext<CommandSourceStack> context, Registry<T> registry, T value) {
     MutableComponent output = Component.translatable("command.mantle.tags_for.success", registry.key().location(), registry.getKey(value));
     List<ResourceLocation> tags = registry.getHolder(registry.getId(value)).stream().flatMap(Holder::tags).map(TagKey::location).toList();
     if (tags.isEmpty()) {
       output.append("\n* ").append(NO_TAGS);
     } else {
-      tags.stream()
-          .sorted(ResourceLocation::compareNamespaced)
-          .forEach(tag -> output.append("\n* " + tag));
+      tags.stream().sorted(ResourceLocation::compareNamespaced).forEach(tag -> output.append("\n* " + tag));
     }
     context.getSource().sendSuccess(() -> output, true);
     return tags.size();
   }
 
-
-  /* Standard way: by ID */
-
-  /** Runs the registry ID subcommand making generics happy */
   private static <T> int runForResult(CommandContext<CommandSourceStack> context, Registry<T> registry) throws CommandSyntaxException {
     ResourceLocation name = context.getArgument("name", ResourceLocation.class);
-    // first, fetch value
     T value = registry.get(name);
     if (value == null) {
       throw VALUE_NOT_FOUND.create(registry.key().location(), name);
@@ -129,26 +102,18 @@ public class TagsForCommand {
     return printOwningTags(context, registry, value);
   }
 
-  /** Run the registry ID subcommand */
   private static int runForId(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
-    Registry<?> result = RegistryArgument.getResult(context, "type");
-    return runForResult(context, result);
+    return runForResult(context, RegistryArgument.getResult(context, "type"));
   }
 
-
-  /* Held item, can extract some data from the stack */
-
-  /** Item tags for held item */
   private static int heldItem(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     Item item = context.getSource().getPlayerOrException().getMainHandItem().getItem();
     return printOwningTags(context, BuiltInRegistries.ITEM, item);
   }
 
-  /** Block tags for held item */
   private static int heldBlock(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
-    Item item = source.getPlayerOrException().getMainHandItem().getItem();
-    Block block = Block.byItem(item);
+    Block block = Block.byItem(source.getPlayerOrException().getMainHandItem().getItem());
     if (block != Blocks.AIR) {
       return printOwningTags(context, BuiltInRegistries.BLOCK, block);
     }
@@ -156,7 +121,6 @@ public class TagsForCommand {
     return 0;
   }
 
-  /** Fluid tags for held item */
   private static int heldFluid(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
     Player player = source.getPlayerOrException();
@@ -173,28 +137,25 @@ public class TagsForCommand {
     return 0;
   }
 
-  /** Potion tags for held item */
   private static int heldPotion(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
-    ItemStack stack = source.getPlayerOrException().getMainHandItem();
-    Potion potion = PotionUtils.getPotion(stack);
-    if (potion != Potions.EMPTY) {
+    PotionContents contents = source.getPlayerOrException().getMainHandItem().get(DataComponents.POTION_CONTENTS);
+    if (contents != null && contents.potion().isPresent()) {
+      Potion potion = contents.potion().get().value();
       return printOwningTags(context, BuiltInRegistries.POTION, potion);
     }
     source.sendSuccess(() -> NO_HELD_POTION, true);
     return 0;
   }
 
-  /** Block tags for held item */
   private static int heldEnchantments(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
-    ItemStack stack = source.getPlayerOrException().getMainHandItem();
-    Map<Enchantment, Integer> enchantments = EnchantmentHelper.getEnchantments(stack);
+    ItemEnchantments enchantments = source.getPlayerOrException().getMainHandItem().getEnchantments();
     if (!enchantments.isEmpty()) {
+      Registry<Enchantment> registry = source.getLevel().registryAccess().registryOrThrow(Registries.ENCHANTMENT);
       int totalTags = 0;
-      // print tags for each contained enchantment
-      for (Enchantment enchantment : enchantments.keySet()) {
-        totalTags += printOwningTags(context, BuiltInRegistries.ENCHANTMENT, enchantment);
+      for (Holder<Enchantment> holder : enchantments.keySet()) {
+        totalTags += printOwningTags(context, registry, holder.value());
       }
       return totalTags;
     }
@@ -202,27 +163,16 @@ public class TagsForCommand {
     return 0;
   }
 
-  /** Entity tags for held item */
   private static int heldEntity(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
     ItemStack stack = source.getPlayerOrException().getMainHandItem();
     if (stack.getItem() instanceof SpawnEggItem egg) {
-      EntityType<?> type = egg.getType(stack.getTag());
-      return printOwningTags(context, BuiltInRegistries.ENTITY_TYPE, type);
+      return printOwningTags(context, BuiltInRegistries.ENTITY_TYPE, egg.getType(stack));
     }
     source.sendSuccess(() -> NO_HELD_ENTITY, true);
     return 0;
   }
 
-
-  /* Targeted, based on look vector. Leaves out anything on the debug screen */
-
-  /**
-   * Gets the tags for the fluid being looked at
-   * @param context  Context
-   * @return  Tags for the looked at block or entity
-   * @throws CommandSyntaxException  For command errors
-   */
   private static int targetedTileEntity(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
     Player player = source.getPlayerOrException();
@@ -235,31 +185,23 @@ public class TagsForCommand {
         return printOwningTags(context, BuiltInRegistries.BLOCK_ENTITY_TYPE, type);
       }
     }
-    // failed
     source.sendSuccess(() -> NO_TARGETED_BLOCK_ENTITY, true);
     return 0;
   }
 
-  /**
-   * Gets the tags for the entity being looked at
-   * @param context  Context
-   * @return  Tags for the looked at block or entity
-   * @throws CommandSyntaxException  For command errors
-   */
   private static int targetedEntity(CommandContext<CommandSourceStack> context) throws CommandSyntaxException {
     CommandSourceStack source = context.getSource();
     Player player = source.getPlayerOrException();
     Vec3 start = player.getEyePosition(1F);
     Vec3 look = player.getLookAngle();
-    double range = Objects.requireNonNull(player.getAttribute(PortingLibAttributes.BLOCK_REACH)).getValue();
+    double range = Objects.requireNonNull(player.getAttribute(Attributes.ENTITY_INTERACTION_RANGE)).getValue();
     Vec3 direction = start.add(look.x * range, look.y * range, look.z * range);
-    AABB bb = player.getBoundingBox().expandTowards(look.x * range, look.y * range, look.z * range).expandTowards(1, 1, 1);
+    AABB bb = player.getBoundingBox().expandTowards(look.x * range, look.y * range, look.z * range).inflate(1);
     EntityHitResult entityTrace = ProjectileUtil.getEntityHitResult(source.getLevel(), player, start, direction, bb, e -> true);
     if (entityTrace != null) {
       EntityType<?> target = entityTrace.getEntity().getType();
       return printOwningTags(context, BuiltInRegistries.ENTITY_TYPE, target);
     }
-    // failed
     source.sendSuccess(() -> NO_TARGETED_ENTITY, true);
     return 0;
   }

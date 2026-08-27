@@ -1,6 +1,5 @@
 package slimeknights.mantle.client.book.data;
 
-import lombok.Getter;
 import lombok.Setter;
 import net.minecraft.resources.ResourceLocation;
 import slimeknights.mantle.client.screen.book.Textures;
@@ -21,7 +20,7 @@ public class AppearanceData implements IDataItem {
   /** Color to tint the cover background */
   public int coverColor = 0x8B4631;
   /** Color of the cover text */
-  @Setter @Getter
+  @Setter
   private int coverTextColor = 0xAE8000;
 
   // general book
@@ -33,7 +32,7 @@ public class AppearanceData implements IDataItem {
   public int arrowColorHover = 0xFF541C;
   /** Color used when hovering over a selectable element */
   public int hoverColor = 0x77EE541C;
-  @Setter @Getter
+  @Setter
   private int pageTint = 0xFFFFFF;
   /** If true, page numbers are drawn below each page */
   public boolean drawPageNumbers = true;
@@ -61,6 +60,14 @@ public class AppearanceData implements IDataItem {
 
   /** Currently unused, purpose uncertain */
   public float scale = 0.5F;
+
+  public int getCoverTextColor() {
+    return coverTextColor;
+  }
+
+  public int getPageTint() {
+    return pageTint;
+  }
 
   /** Gets the book cover texture */
   public ResourceLocation getCoverTexture() {
