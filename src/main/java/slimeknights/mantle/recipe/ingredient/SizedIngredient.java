@@ -1,7 +1,6 @@
 package slimeknights.mantle.recipe.ingredient;
 
 import com.google.gson.JsonObject;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.tags.TagKey;
@@ -22,7 +21,7 @@ import java.util.stream.Collectors;
 /**
  * Extension of the vanilla ingredient to make stack size checks
  */
-@RequiredArgsConstructor(staticName = "of")
+@RequiredArgsConstructor
 public class SizedIngredient implements Predicate<ItemStack> {
   /** Empty sized ingredient wrapper. Matches only the empty stack of size 0 */
   public static final SizedIngredient EMPTY = of(Ingredient.EMPTY, 0);
@@ -33,16 +32,27 @@ public class SizedIngredient implements Predicate<ItemStack> {
     SizedIngredient::new);
 
   /** Ingredient to use in recipe match */
-  @Getter
   private final Ingredient ingredient;
   /** Amount of this ingredient needed */
-  @Getter
   private final int amountNeeded;
 
   /** Last list of matching stacks from the ingredient */
   private WeakReference<ItemStack[]> lastIngredientMatch;
   /** Cached matching stacks from last time it was requested */
   private List<ItemStack> matchingStacks;
+
+  public Ingredient getIngredient() {
+    return ingredient;
+  }
+
+  public int getAmountNeeded() {
+    return amountNeeded;
+  }
+
+  /** Gets a new sized ingredient with the given size. */
+  public static SizedIngredient of(Ingredient ingredient, int amountNeeded) {
+    return new SizedIngredient(ingredient, amountNeeded);
+  }
 
   /**
    * Gets a new sized ingredient with a size of 1
@@ -111,7 +121,7 @@ public class SizedIngredient implements Predicate<ItemStack> {
   public List<ItemStack> getMatchingStacks() {
     ItemStack[] ingredientMatch = ingredient.getItems();
     // if we never cached, or the array instance changed since we last cached, recache
-    if (matchingStacks == null || lastIngredientMatch.get() != ingredientMatch) {
+    if (matchingStacks == null || lastIngredientMatch == null || lastIngredientMatch.get() != ingredientMatch) {
       matchingStacks = Arrays.stream(ingredientMatch).map(stack -> {
         if (stack.getCount() != amountNeeded) {
           stack = stack.copy();
