@@ -4,7 +4,6 @@ import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import io.github.fabricators_of_create.porting_lib.event.client.OverlayRenderCallback;
-import io.github.fabricators_of_create.porting_lib.event.client.OverlayRenderCallback.Types;
 import io.github.fabricators_of_create.porting_lib.models.geometry.IGeometryLoader;
 import io.github.fabricators_of_create.porting_lib.models.geometry.RegisterGeometryLoadersCallback;
 import net.fabricmc.api.ClientModInitializer;
@@ -21,7 +20,6 @@ import net.minecraft.client.renderer.blockentity.SignRenderer;
 import net.minecraft.client.resources.model.Material;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.PackType;
-import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.level.GameType;
 import slimeknights.mantle.Mantle;
 import slimeknights.mantle.client.book.BookLoader;
@@ -35,8 +33,8 @@ import slimeknights.mantle.client.model.inventory.InventoryModel;
 import slimeknights.mantle.client.model.util.ColoredBlockModel;
 import slimeknights.mantle.client.model.util.MantleItemLayerModel;
 import slimeknights.mantle.client.model.util.ModelHelper;
-import slimeknights.mantle.fluid.texture.FluidTextureManager;
 import slimeknights.mantle.client.render.MantleShaders;
+import slimeknights.mantle.fluid.texture.FluidTextureManager;
 import slimeknights.mantle.fluid.tooltip.FluidTooltipHandler;
 import slimeknights.mantle.network.MantleNetwork;
 import slimeknights.mantle.registration.MantleRegistrations;
@@ -52,7 +50,6 @@ import static net.minecraft.client.renderer.Sheets.SIGN_SHEET;
 public class ClientEvents implements ClientModInitializer {
   private static final Function<OffhandCooldownTracker,Float> COOLDOWN_TRACKER = OffhandCooldownTracker::getCooldown;
 
-  /** Called on construct to initiatlize things that need early entry */
   public static void onConstruct() {
     FluidTextureManager.init();
   }
@@ -70,13 +67,13 @@ public class ClientEvents implements ClientModInitializer {
 
   @Override
   public void onInitializeClient() {
-    RegistrationHelper.forEachWoodType(woodType ->  {
-      ResourceLocation location = new ResourceLocation(woodType.name());
-      Sheets.SIGN_MATERIALS.put(woodType, new Material(SIGN_SHEET, new ResourceLocation(location.getNamespace(), "entity/signs/" + location.getPath())));
+    RegistrationHelper.forEachWoodType(woodType -> {
+      ResourceLocation location = ResourceLocation.parse(woodType.name());
+      Sheets.SIGN_MATERIALS.put(woodType, new Material(SIGN_SHEET,
+        ResourceLocation.fromNamespaceAndPath(location.getNamespace(), "entity/signs/" + location.getPath())));
     });
 
     BookLoader.registerBook(Mantle.getResource("test"), new FileRepository(Mantle.getResource("books/test")));
-
     registerEntityRenderers();
     registerListeners();
     CoreShaderRegistrationCallback.EVENT.register(MantleShaders::registerShaders);
@@ -85,20 +82,15 @@ public class ClientEvents implements ClientModInitializer {
     MantleNetwork.INSTANCE.network.initClientListener();
   }
 
-  static void registerModelLoaders(Map<ResourceLocation, IGeometryLoader<?>> loaders) {
-    // standard models - useful in resource packs for any model
-    event.register("connected", ConnectedModel.LOADER);
-    event.register("item_layer", MantleItemLayerModel.LOADER);
-    event.register("colored_block", ColoredBlockModel.LOADER);
-    event.register("fallback", FallbackModelLoader.INSTANCE);
-
-    // NBT dynamic models - require specific data defined in the block/item to use
-    event.register("nbt_key", NBTKeyModel.LOADER);
-    event.register("retextured", RetexturedModel.LOADER);
-
-    // data models - contain information for other parts in rendering rather than rendering directly
-    event.register("inventory", InventoryModel.LOADER);
-    event.register("fluids", FluidsModel.LOADER);
+  static void registerModelLoaders(Map<ResourceLocation,IGeometryLoader<?>> loaders) {
+    loaders.put(Mantle.getResource("connected"), ConnectedModel.LOADER);
+    loaders.put(Mantle.getResource("item_layer"), MantleItemLayerModel.LOADER);
+    loaders.put(Mantle.getResource("colored_block"), ColoredBlockModel.LOADER);
+    loaders.put(Mantle.getResource("fallback"), FallbackModelLoader.INSTANCE);
+    loaders.put(Mantle.getResource("nbt_key"), NBTKeyModel.LOADER);
+    loaders.put(Mantle.getResource("retextured"), RetexturedModel.LOADER);
+    loaders.put(Mantle.getResource("inventory"), InventoryModel.LOADER);
+    loaders.put(Mantle.getResource("fluids"), FluidsModel.LOADER);
   }
 
   static void commonSetup() {
@@ -106,65 +98,42 @@ public class ClientEvents implements ClientModInitializer {
     OverlayRenderCallback.EVENT.register(ClientEvents::renderOffhandAttackIndicator);
   }
 
-  // registered with FORGE bus
+  /**
+   * Renders Mantle's offhand cooldown indicator in the crosshair overlay.
+   * Porting Lib 1.21 no longer exposes a separate hotbar overlay callback, so the hotbar-specific
+   * placement will be reattached through Fabric's HUD layer API in the client-polish pass.
+   */
   private static boolean renderOffhandAttackIndicator(GuiGraphics guiGraphics, float partialTicks, Window window, OverlayRenderCallback.Types overlay) {
-    // must have a player, not be in spectator, and have the indicator enabled
-    Minecraft minecraft = Minecraft.getInstance();
-    Options settings = minecraft.options;
-    AttackIndicatorStatus indicator = settings.attackIndicator().get();
-    if (minecraft.player == null || minecraft.gameMode == null || minecraft.gameMode.getPlayerMode() == GameType.SPECTATOR || indicator == AttackIndicatorStatus.OFF) {
-      return;
-    }
-
-    // only care about hotbar and crosshair
-    NamedGuiOverlay overlay = event.getOverlay();
-    // will be true for hotbar, false for crosshair
-    boolean isHotbar = VanillaGuiOverlay.HOTBAR.type() == overlay;
-    if (!isHotbar && VanillaGuiOverlay.CROSSHAIR.type() != overlay) {
-      return;
-    }
-
-    // enabled if either in the tag, or if force enabled
-    float cooldown = OffhandCooldownTracker.CAPABILITY.maybeGet(minecraft.player).filter(OffhandCooldownTracker::isEnabled).map(COOLDOWN_TRACKER).orElse(1.0f);
-    if (cooldown >= 1.0f) {
+    if (overlay != OverlayRenderCallback.Types.CROSSHAIRS) {
       return false;
     }
 
-    // show attack indicator
-    PoseStack matrixStack = event.getPoseStack();
-    switch (indicator) {
-      case CROSSHAIR:
-        if (!isHotbar && minecraft.options.getCameraType().isFirstPerson()) {
-          if (!settings.renderDebug || settings.hideGui || minecraft.player.isReducedDebugInfo() || settings.reducedDebugInfo().get()) {
-            // mostly cloned from vanilla attack indicator
-            RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.ONE_MINUS_DST_COLOR, GlStateManager.DestFactor.ONE_MINUS_SRC_COLOR, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
-            int scaledHeight = minecraft.getWindow().getGuiScaledHeight();
-            // integer division makes this a pain to line up, there might be a simplier version of this formula but I cannot think of one
-            int y = (scaledHeight / 2) - 14 + (2 * (scaledHeight % 2));
-            int x = minecraft.getWindow().getGuiScaledWidth() / 2 - 8;
-            int width = (int)(cooldown * 17.0F);
-            guiGraphics.blit(Gui.GUI_ICONS_LOCATION, x, y, 36, 94, 16, 4);
-            guiGraphics.blit(Gui.GUI_ICONS_LOCATION, x, y, 52, 94, width, 4);
-          }
-        }
-        break;
-      case HOTBAR:
-        if (isHotbar && minecraft.cameraEntity == minecraft.player) {
-          int centerWidth = minecraft.getWindow().getGuiScaledWidth() / 2;
-          int y = minecraft.getWindow().getGuiScaledHeight() - 20;
-          int x;
-          // opposite of the vanilla hand location, extra bit to offset past the offhand slot
-          if (minecraft.player.getMainArm() == HumanoidArm.RIGHT) {
-            x = centerWidth - 91 - 22 - 32;
-          } else {
-            x = centerWidth + 91 + 6 + 32;
-          }
-          int l1 = (int)(cooldown * 19.0F);
-          RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-          guiGraphics.blit(Gui.GUI_ICONS_LOCATION, x, y, 0, 94, 18, 18);
-          guiGraphics.blit(Gui.GUI_ICONS_LOCATION, x, y + 18 - l1, 18, 112 - l1, 18, l1);
-        }
-        break;
+    Minecraft minecraft = Minecraft.getInstance();
+    Options settings = minecraft.options;
+    AttackIndicatorStatus indicator = settings.attackIndicator().get();
+    if (minecraft.player == null || minecraft.gameMode == null || minecraft.gameMode.getPlayerMode() == GameType.SPECTATOR || indicator != AttackIndicatorStatus.CROSSHAIR) {
+      return false;
+    }
+
+    float cooldown = OffhandCooldownTracker.CAPABILITY.maybeGet(minecraft.player)
+      .filter(OffhandCooldownTracker::isEnabled)
+      .map(COOLDOWN_TRACKER)
+      .orElse(1.0f);
+    if (cooldown >= 1.0f || !minecraft.options.getCameraType().isFirstPerson()) {
+      return false;
+    }
+
+    if (!settings.renderDebug || settings.hideGui || minecraft.player.isReducedDebugInfo() || settings.reducedDebugInfo().get()) {
+      RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.ONE_MINUS_DST_COLOR,
+        GlStateManager.DestFactor.ONE_MINUS_SRC_COLOR,
+        GlStateManager.SourceFactor.ONE,
+        GlStateManager.DestFactor.ZERO);
+      int scaledHeight = minecraft.getWindow().getGuiScaledHeight();
+      int y = (scaledHeight / 2) - 14 + (2 * (scaledHeight % 2));
+      int x = minecraft.getWindow().getGuiScaledWidth() / 2 - 8;
+      int width = (int)(cooldown * 17.0F);
+      guiGraphics.blit(Gui.GUI_ICONS_LOCATION, x, y, 36, 94, 16, 4);
+      guiGraphics.blit(Gui.GUI_ICONS_LOCATION, x, y, 52, 94, width, 4);
     }
     return false;
   }
