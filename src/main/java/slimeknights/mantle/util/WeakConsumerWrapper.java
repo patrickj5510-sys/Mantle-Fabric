@@ -1,26 +1,17 @@
 package slimeknights.mantle.util;
 
-import io.github.fabricators_of_create.porting_lib.common.util.NonNullConsumer;
-import io.github.fabricators_of_create.porting_lib.util.LazyOptional;
-
 import java.lang.ref.WeakReference;
+import java.util.function.Consumer;
 
 /**
- * Implementation of {@link NonNullConsumer} that weakly references a parent object.
- * Designed for use in {@link LazyOptional#addListener(NonNullConsumer)},
- * to prevent the capability owner from keeping a reference to the listener TE and preventing garbage collection.
- * @param <TE>  Parent object type, typically a TE
- * @param <C>   Consumer value
+ * Consumer that weakly references a parent object so listeners do not keep it alive.
+ * @param <TE> Parent object type, typically a block entity
+ * @param <C> Consumer value
  */
-public class WeakConsumerWrapper<TE,C> implements NonNullConsumer<C> {
+public class WeakConsumerWrapper<TE,C> implements Consumer<C> {
   private final WeakReference<TE> te;
   private final NonnullBiConsumer<TE,C> consumer;
 
-  /**
-   * Creates a new weak consumer wrapper
-   * @param te        Weak reference, typically to a TE
-   * @param consumer  Consumer using the TE and the consumed value. Should not use a lambda reference to an object that may need to be garbage collected
-   */
   public WeakConsumerWrapper(TE te, NonnullBiConsumer<TE,C> consumer) {
     this.te = new WeakReference<>(te);
     this.consumer = consumer;
